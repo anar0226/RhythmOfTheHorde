@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rhythm of the Horde</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: #eadbc0; font-family: Cinzel, Georgia, serif; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+  #menu { position: fixed; inset: 0; display: grid; place-content: center; padding: 16px; overflow-y: auto; text-align: center;
+          background: radial-gradient(rgba(0, 0, 0, .35), rgba(0, 0, 0, .8)); }
+  #menu[hidden] { display: none; }
+  h1 { margin: 0; font-size: clamp(34px, 6vw, 76px); color: #f2c46b; letter-spacing: .05em; text-shadow: 0 4px 14px #000; }
+  .tag { margin: 6px 0 0; font: italic 18px Georgia, serif; }
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 200px)); gap: 14px; justify-content: center; margin: 28px 0; }
+  .cards div { padding: 14px; border: 1px solid #6b5230; border-radius: 10px; background: rgba(14, 12, 10, .85); font: 14px/1.45 Georgia, serif; }
+  .cards img { display: block; width: 76px; height: 76px; margin: 0 auto 10px; object-fit: contain; border-radius: 8px; }
+  .cards b { display: block; margin-bottom: 6px; font: 700 15px Cinzel, Georgia, serif; color: #f2c46b; }
+  button { margin: 6px; padding: 12px 26px; border: 1px solid #f2c46b; border-radius: 8px; background: #f2c46b; color: #1b140c;
+           font: 700 18px Cinzel, Georgia, serif; cursor: pointer; }
+  button.ghost { background: transparent; color: #f2c46b; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #status { max-width: 640px; margin: 14px auto 0; font: 15px/1.5 Georgia, serif; }
+  code { color: #f2c46b; }
+  @media (max-width: 860px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<canvas width="1600" height="900"></canvas>
+<div id="menu">
+  <h1>Rhythm of the Horde</h1>
+  <p class="tag">Ride the Mongolian steppe. Slash to the beat. Squat to bend time.</p>
+  <div class="cards">
+    <div><img src="assets/UI/Ride Symbol.png" alt=""><b>Ride. Slash. Survive.</b>Swing your arm to slash arrows, shields and strikes as they reach the line.</div>
+    <div><img src="assets/UI/Squat Symbol.png" alt=""><b>Squat. Focus. Strike.</b>Squat and hold to slow time. Stand up to return to full speed.</div>
+    <div><img src="assets/UI/Khan's Wrath Symbol.png" alt=""><b>Keep your combo</b>40 hits in a row unleashes Khan's Wrath: 8× score.</div>
+    <div><img src="assets/UI/Become Legend Symbol.png" alt=""><b>Become legend</b>Survive the song. Every arrow or shield you miss costs health.</div>
+  </div>
+  <div>
+    <button id="cam" disabled>Ride with webcam</button>
+    <button id="keys" class="ghost" disabled>Keyboard mode</button>
+  </div>
+  <p id="status" aria-live="polite">Loading… If this message stays, serve this folder over http: run <code>python serve.py</code> here and open <code>http://localhost:8000</code>.</p>
+</div>
+<script type="module" src="game.js"></script>
+</body>
+</html>

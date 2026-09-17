@@ -1,0 +1,10 @@
+{
+  "name": "rhythm-of-the-horde",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python serve.py",
+    "test": "node test.mjs",
+    "frames": "python tools/rider_sheet.py"
+  }
+}
