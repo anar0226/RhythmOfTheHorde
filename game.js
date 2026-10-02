@@ -4,6 +4,10 @@ import { BEAT, DOWNBEAT, GOOD, SQUAT_IN, SQUAT_OUT, SWING_SPEED, TRACK, buildCha
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
+//TODOS:
+//Make UI more opaque, more specifcally the swing and squat icons
+//Fix the ger,ovoo and emeel so that they are not just floating around//
+
 const W = 1600, H = 900, GROUND = 745, FIELD = GROUND - 80;
 const SLOW = 0.5, MAX_HP = 10, WRATH = 40;
 const HURT = 0.7, SLASH = 0.26;
@@ -42,7 +46,7 @@ const S = {
 const EN = 'Enemy Horseman/Enemy_';
 const E = {
   ride: [[`${EN}horseman_Frame_1`, 10, 12, 408, 514], [`${EN}horseman_Frame_2`, 2, 26, 395, 519], [`${EN}horseman_Frame_3`, 0, 6, 396, 535],
-    [`${EN}horseman_Frame_4`, 0, 14, 395, 528], [`${EN}horseman_Frame_5`, 0, 19, 385, 518]],
+  [`${EN}horseman_Frame_4`, 0, 14, 395, 528], [`${EN}horseman_Frame_5`, 0, 19, 385, 518]],
   hit: [`${EN}horseman_Hit_Reaction`, 55, 41, 432, 394],
   stumble: [`${EN}horseman_Stumble`, 24, 58, 456, 381],
   falling: [`${EN}horse_falling`, 34, 176, 448, 252],
@@ -427,7 +431,7 @@ function drawRider() {
     const stride = ((((state === 'play' ? game.t - DOWNBEAT : clock) / (BEAT / 2)) % 1) + 1) % 1;
     const cell = game.hurt > 0 ? CELL.hurt[game.hurt > HURT - 0.15 ? 0 : 1]
       : game.slash > 0 && sinceSlash < 0.14 ? CELL.slash[sinceSlash < 0.07 ? 0 : 1]
-      : CELL.gallop[Math.floor(stride * 4)];
+        : CELL.gallop[Math.floor(stride * 4)];
     riderCell(cell, 1 - crouch, knock, -5 * Math.sin(stride * 2 * Math.PI));
   }
   if (crouch > 0) riderCell(CELL.squat, crouch, knock);
@@ -613,8 +617,8 @@ function drawScreens() {
     const cam = mode === 'cam';
     const tip = !cam ? 'Space to slash · hold S to squat'
       : !body ? 'Step into the camera view'
-      : depth === null ? 'Step back until your knees are visible'
-      : 'Rider ready. Swing your arm to begin!';
+        : depth === null ? 'Step back until your knees are visible'
+          : 'Rider ready. Swing your arm to begin!';
     panel(450, 300, 700, 190);
     text(cam ? 'SWING TO RIDE' : 'PRESS SPACE TO RIDE', W / 2, 372, 46, GOLD, 'center');
     text(tip, W / 2, 428, 24, cam && depth === null ? RED : '#e9e4da', 'center');
