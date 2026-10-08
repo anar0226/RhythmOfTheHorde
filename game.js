@@ -1,8 +1,9 @@
-import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs';
+import { FilesetResolver, PoseLandmarker } from './vendor/mediapipe/vision_bundle.mjs';
 import { GOOD, LEVELS, SQUAT_IN, SWING_SPEED, beatMap, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
 
-const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+// MediaPipe Tasks Vision 1.0.1 and its lite pose model, shipped with the game so webcam mode needs no CDN
+const WASM = new URL('vendor/mediapipe/wasm', location.href).href;
+const MODEL = new URL('vendor/mediapipe/pose_landmarker_lite.task', location.href).href;
 
 //TODOS:
 //Make UI more opaque, more specifcally the swing and squat icons

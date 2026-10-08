@@ -3,6 +3,10 @@ import sys
 
 
 class NoCache(http.server.SimpleHTTPRequestHandler):
+    # Windows can map these to the wrong types in its registry, and Chrome then refuses the game's modules and MediaPipe's engine
+    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
+                      ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm"}
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
