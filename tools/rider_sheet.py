@@ -95,7 +95,7 @@ def place(img, anchor, scale):
 
 
 frames = {n: read_png(ASSETS / f"{n}.png") for n in
-          ["Galloping_1", "Galloping_2", "Galloping_3", "Galloping_4", "Damaged_1", "Damaged_2", "Damaged_3", "Squat"]}
+          ["Galloping_1", "Galloping_2", "Galloping_3", "Galloping_4", "Damaged_1", "Damaged_2", "Damaged_3"]}
 ref = frames["Galloping_1"]
 ref_anchor = bottom_centre(ref)
 cells = {}
@@ -104,7 +104,6 @@ for name in ["Galloping_1", "Galloping_2", "Galloping_3", "Galloping_4", "Damage
     cells[name] = place(frames[name], ((ref_anchor[0] - dx) / s, (ref_anchor[1] - dy) / s), s)
     print(f"{name}: scale {s:.2f}, shift ({dx:+d}, {dy:+d})")
 cells["Damaged_3"] = place(frames["Damaged_3"], bottom_centre(frames["Damaged_3"]), 0.75)
-cells["Squat"] = place(frames["Squat"], bottom_centre(frames["Squat"]), 1.0)
 
 yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
 feather = 14
@@ -112,7 +111,7 @@ rider = (np.clip((AY - 175 - yy) / feather + 0.5, 0, 1) * np.clip((xx - (AX - 38
 steady = lambda name: cells["Galloping_1"] * rider + cells[name] * (1 - rider)
 
 order = [steady("Galloping_1"), steady("Galloping_3"), steady("Galloping_4"), steady("Galloping_2"),
-         cells["Galloping_4"], cells["Galloping_3"], cells["Damaged_1"], cells["Damaged_2"], cells["Damaged_3"], cells["Squat"]]
+         cells["Galloping_4"], cells["Galloping_3"], cells["Damaged_1"], cells["Damaged_2"], cells["Damaged_3"]]
 sheet = np.concatenate(order, axis=1)
 alpha = sheet[..., 3:]
 sheet[..., :3] = np.where(alpha > 0, sheet[..., :3] / np.maximum(alpha, 1e-6), 0)
