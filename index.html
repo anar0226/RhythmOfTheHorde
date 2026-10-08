@@ -26,6 +26,11 @@
   #status { max-width: 640px; margin: 14px auto 0; font: 15px/1.5 Georgia, serif; }
   code { color: #f2c46b; }
   @media (max-width: 860px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  #levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 18px; }
+  #levels button { margin: 0; padding: 8px 18px; background: rgba(14, 12, 10, .85); color: #f2c46b; font-size: 15px; border-color: #6b5230; }
+  #levels button small { display: block; margin-top: 2px; font: italic 12px Georgia, serif; color: #cdb88f; }
+  #levels button[aria-pressed="true"] { background: #f2c46b; color: #1b140c; border-color: #f2c46b; }
+  #levels button[aria-pressed="true"] small { color: #3a2c18; }
   #scene { position: fixed; right: 12px; bottom: 12px; z-index: 2; display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: rgba(12, 10, 8, .72); }
   #scene button { margin: 0; padding: 5px 10px; border-color: rgba(242, 196, 107, .45); border-radius: 5px; background: transparent; color: #f2c46b; font-size: 12px; }
   #scene button[aria-pressed="true"] { background: #f2c46b; color: #1b140c; }
@@ -41,6 +46,11 @@
     <div><img src="assets/UI/Squat Symbol.png" alt=""><b>Squat. Focus. Strike.</b>Squat and hold to slow time. Stand up to return to full speed.</div>
     <div><img src="assets/UI/Khan's Wrath Symbol.png" alt=""><b>Keep your combo</b>40 hits in a row unleashes Khan's Wrath: 8× score.</div>
     <div><img src="assets/UI/Become Legend Symbol.png" alt=""><b>Become legend</b>Survive the song. Every arrow or shield you miss costs health.</div>
+  </div>
+  <div id="levels" role="group" aria-label="Level">
+    <button data-level="tutorial" aria-pressed="true">Tutorial<small>Learn to ride</small></button>
+    <button data-level="wolf" aria-pressed="false">Wolf Totem<small>The HU · steppe</small></button>
+    <button data-level="khar" aria-pressed="false">Khar Khulz<small>Uuhai · night</small></button>
   </div>
   <div>
     <button id="cam" disabled>Ride with webcam</button>

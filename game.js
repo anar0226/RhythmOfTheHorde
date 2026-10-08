@@ -1,5 +1,5 @@
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs';
-import { BEAT, DOWNBEAT, GOOD, SQUAT_IN, SWING_SPEED, TRACK, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
+import { GOOD, LEVELS, SQUAT_IN, SWING_SPEED, beatMap, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
 
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
@@ -69,16 +69,10 @@ const assetPath = name => `assets/${folderOf[name] ? `${folderOf[name]}/` : ''}$
 const IMG = {};
 const files = new Set([...Object.values(S), ...Object.values(E).flatMap(v => (Array.isArray(v[0]) ? v : [v]))].map(s => s[0]).concat('Rider_Sheet', 'Background_map.jpg', 'Background1.png', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo', 'Score_Numerals'));
 const ac = new AudioContext();
-let song;
 try {
-  [song] = await Promise.all([
-    fetch(`assets/audio/${TRACK.file}`)
-      .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`Missing assets/audio/${TRACK.file}`))))
-      .then(data => ac.decodeAudioData(data)),
-    ...[...files].map(name => new Promise((ok, fail) => {
-      IMG[name] = Object.assign(new Image(), { onload: ok, onerror: () => fail(new Error(`Missing ${assetPath(name)}`)), src: assetPath(name) });
-    })),
-  ]);
+  await Promise.all([...files].map(name => new Promise((ok, fail) => {
+    IMG[name] = Object.assign(new Image(), { onload: ok, onerror: () => fail(new Error(`Missing ${assetPath(name)}`)), src: assetPath(name) });
+  })));
 } catch (e) {
   say(e.message);
   throw e;
@@ -127,12 +121,49 @@ function audioClock() {
 
 const songTime = () => game.t + Math.max(0, audioClock() - heard) * game.slow;
 
-const PEAKS = Array.from({ length: 80 }, (_, i) => {
-  const d = song.getChannelData(0), from = Math.floor((i * d.length) / 80), to = Math.floor(((i + 1) * d.length) / 80);
+// The level being played: its song, the song's loudness outline for the HUD, and its beat map.
+let level = LEVELS.wolf, song = null, peaks = [], beat = beatMap(level);
+const songs = {};
+const outline = buffer => Array.from({ length: 80 }, (_, i) => {
+  const d = buffer.getChannelData(0), from = Math.floor((i * d.length) / 80), to = Math.floor(((i + 1) * d.length) / 80);
   let sum = 0;
   for (let j = from; j < to; j += 97) sum += Math.abs(d[j]);
   return sum / Math.ceil((to - from) / 97);
 }).map((p, _, all) => p / Math.max(...all));
+
+// The tutorial's music: a kick and a snare on alternating beats, hats on the eighths and a low drone.
+function drumLoop({ bpm, downbeat, chart, firstBar }) {
+  const sr = ac.sampleRate, len = 60 / bpm, seconds = downbeat + (firstBar + chart.length + 1) * 4 * len;
+  const buffer = ac.createBuffer(1, Math.ceil(seconds * sr), sr), d = buffer.getChannelData(0);
+  const hit = (at, dur, f) => {
+    for (let i = 0, o = Math.round(at * sr); i < dur * sr && o + i < d.length; i++) d[o + i] += f(i / sr);
+  };
+  let noise = 0;
+  for (let b = 0; downbeat + b * len < seconds - len; b++) {
+    const t = downbeat + b * len;
+    if (b % 2 === 0) hit(t, 0.35, x => 0.9 * Math.sin(2 * Math.PI * (45 * x + 60 * (1 - Math.exp(-x * 25)))) * Math.exp(-x * 9));
+    else hit(t, 0.2, x => 0.35 * (Math.random() * 2 - 1) * Math.exp(-x * 18));
+    for (const h of [0, 0.5]) hit(t + h * len, 0.05, () => 0.12 * ((noise = Math.random() * 2 - 1) - noise * 0.6));
+  }
+  for (let i = 0; i < d.length; i++) {
+    const x = i / sr, swell = Math.min(1, x / 2, (seconds - x) / 2);
+    d[i] += swell * 0.06 * (Math.sin(2 * Math.PI * 55 * x) + 0.6 * Math.sin(2 * Math.PI * 82.5 * x) + 0.3 * Math.sin(2 * Math.PI * 110 * x));
+  }
+  return buffer;
+}
+
+async function load(id) {
+  const next = LEVELS[id];
+  songs[id] ??= next.file
+    ? fetch(`assets/audio/${next.file}`)
+      .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`Missing assets/audio/${next.file}`))))
+      .then(data => ac.decodeAudioData(data))
+    : Promise.resolve(drumLoop(next));
+  const buffer = await songs[id];
+  [level, song, peaks, beat] = [next, buffer, outline(buffer), beatMap(next)];
+  game = newGame();
+  setScene(next.scene);
+}
 
 const NOISE = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
 NOISE.getChannelData(0).forEach((_, i, d) => (d[i] = Math.random() * 2 - 1));
@@ -197,7 +228,7 @@ function track(now, meta) {
 }
 
 let state = 'menu', mode = null, overAt = 0;
-const newGame = (notes = buildChart()) => ({
+const newGame = (notes = buildChart(level)) => ({
   t: 0, notes, raids: planRaids(notes), score: 0, combo: 0, best: 0, hp: MAX_HP, perfect: 0, good: 0, miss: 0,
   swings: 0, squatTime: 0, slow: 1, hurt: 0, slash: 0, shake: 0, flash: 0, fx: [],
   squatting: false, swingReadyAt: 0, squatReadyAt: 0, corpses: [], kills: 0,
@@ -285,7 +316,7 @@ function miss(n) {
   game.combo = 0;
   popup('MISS', HIT_X + 20, NOTE_Y - 70, 30, RED, true);
   if (n.type === 'strike') n.raid.struck = game.t;
-  damage();
+  if (!level.practice) damage();
 }
 
 function update(dt) {
@@ -450,6 +481,9 @@ function drawWorld() {
   props();
 }
 
+// How far through the current eighth note the song is, for the horses' gallop; a steady canter in the menus.
+const eighth = () => (((state === 'play' ? beat.of(game.t) * 2 : clock / 0.35) % 1) + 1) % 1;
+
 // Where a raid's horseman is at song time T (null while off screen or once cut down).
 function rider(raid, T) {
   const left = raid.strike.t - T, x = MELEE_X + (left > 0 ? left * RIDE : left * DASH);
@@ -458,7 +492,7 @@ function rider(raid, T) {
 
 function drawEnemies() {
   for (const c of game.corpses) spr(c.age < 0.3 ? E.hit : c.age < 0.9 ? E.falling : E.dead, c.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
-  const stride = ((((state === 'play' ? game.t - DOWNBEAT : clock) / (BEAT / 2)) % 1) + 1) % 1;
+  const stride = eighth();
   const gallop = E.ride[Math.floor(stride * E.ride.length)];
   for (const raid of game.raids) {
     const at = rider(raid, game.t);
@@ -498,7 +532,7 @@ function riderCell(cell, alpha, dx = 0, dy = 0) {
 function drawRider() {
   const knock = -26 * Math.max(0, game.hurt / HURT), sinceSlash = SLASH - game.slash;
   if (state === 'over' && game.hp <= 0) return riderCell(CELL.fallen, 1);
-  const stride = ((((state === 'play' ? game.t - DOWNBEAT : clock) / (BEAT / 2)) % 1) + 1) % 1;
+  const stride = eighth();
   const cell = game.hurt > 0 ? CELL.hurt[game.hurt > HURT - 0.15 ? 0 : 1]
     : game.slash > 0 && sinceSlash < 0.14 ? CELL.slash[sinceSlash < 0.07 ? 0 : 1]
     : CELL.gallop[Math.floor(stride * 4)];
@@ -601,12 +635,12 @@ function drawHud(wrath, slowAmt, pulse) {
 
   const mx = 520, mw = 560;
   panel(mx, 18, mw, 66);
-  text(`MUSIC: ${TRACK.title}`, mx + 20, 44, 16);
-  text(`${clockText(game.t)} / ${clockText(song.duration)}`, mx + mw - 20, 44, 16, GOLD, 'right');
-  PEAKS.forEach((peak, i) => {
+  text(level.file ? `MUSIC: ${level.title}` : 'TUTORIAL · DRUM PRACTICE', mx + 20, 44, 16);
+  text(`${clockText(game.t)} / ${clockText(song?.duration ?? 0)}`, mx + mw - 20, 44, 16, GOLD, 'right');
+  peaks.forEach((peak, i) => {
     const h = 3 + 14 * peak ** 2;
-    ctx.fillStyle = i / PEAKS.length < game.t / song.duration ? '#d8432c' : '#5f574b';
-    ctx.fillRect(mx + 20 + (i * (mw - 40)) / PEAKS.length, 66 - h / 2, 3, h);
+    ctx.fillStyle = i / peaks.length < game.t / song.duration ? '#d8432c' : '#5f574b';
+    ctx.fillRect(mx + 20 + (i * (mw - 40)) / peaks.length, 66 - h / 2, 3, h);
   });
 
   ctx.save();
@@ -625,8 +659,8 @@ function drawHud(wrath, slowAmt, pulse) {
   ctx.fillStyle = wrath ? 'rgba(220,70,40,.7)' : 'rgba(150,190,230,.6)';
   ctx.fillRect(40, 845, W - 80, 2);
   ctx.fillStyle = '#e9e4da';
-  for (let b = Math.ceil((game.t - DOWNBEAT - HIT_X / PX) / BEAT); ; b++) {
-    const x = HIT_X + (DOWNBEAT + b * BEAT - game.t) * PX;
+  for (let b = Math.ceil(beat.of(game.t - HIT_X / PX)); ; b++) {
+    const x = HIT_X + (beat.at(b) - game.t) * PX;
     if (x > W - 40) break;
     if (x < 40) continue;
     ctx.beginPath();
@@ -645,11 +679,28 @@ function drawHud(wrath, slowAmt, pulse) {
   text(slow ? '‹‹  SLOW MOTION  ››' : 'NORMAL SPEED', W / 2, 882, 18, slow ? GOLD : '#9fc4e8', 'center');
 }
 
+// A lesson's text appears a bar before its first notes, so there is time to read it.
+function drawLesson() {
+  const bar = Math.floor(beat.of(game.t) / 4) + 1, lesson = level.lessons?.findLast(l => l.bar <= bar);
+  if (!lesson) return;
+  ctx.font = '700 19px Cinzel, Georgia, serif';
+  const lines = [];
+  for (const word of (mode === 'cam' ? lesson.cam : lesson.keys).split(' ')) {
+    const line = lines.length ? `${lines.at(-1)} ${word}` : word;
+    if (lines.length && ctx.measureText(line).width <= 600) lines[lines.length - 1] = line;
+    else lines.push(word);
+  }
+  panel(480, 96, 640, 58 + lines.length * 26);
+  text(lesson.title, W / 2, 132, 26, GOLD, 'center');
+  lines.forEach((line, i) => text(line, W / 2, 166 + i * 26, 19, '#e9e4da', 'center'));
+}
+
 function drawPrompts(slowAmt) {
   if (state !== 'play') return;
+  drawLesson();
   const countIn = game.notes[0].t - game.t;
   if (countIn > 0) {
-    const beats = Math.ceil(countIn / BEAT);
+    const beats = Math.ceil(countIn / beat.len(game.t));
     text(beats > 4 ? 'GET READY' : String(beats), W / 2, 340, beats > 4 ? 64 : 120, GOLD, 'center');
   }
   if (slowAmt < 0.5 && game.notes.some(n => n.dense && !n.done && n.t > game.t && n.t - game.t < 2.5)) {
@@ -684,10 +735,11 @@ function drawScreens() {
       : !body ? 'Step into the camera view'
       : squat.bend === null ? 'Step back until your knees are visible'
       : 'Rider ready. Slash down to begin!';
-    panel(450, 300, 700, 190);
-    text(cam ? 'SWING TO RIDE' : 'PRESS SPACE TO RIDE', W / 2, 372, 46, GOLD, 'center');
-    text(tip, W / 2, 428, 24, cam && squat.bend === null ? RED : '#e9e4da', 'center');
-    text('Slash on the beat · Squat to slow time', W / 2, 464, 18, PALE, 'center');
+    panel(450, 270, 700, 230);
+    text(level.title, W / 2, 318, 22, PALE, 'center');
+    text(cam ? 'SWING TO RIDE' : 'PRESS SPACE TO RIDE', W / 2, 378, 46, GOLD, 'center');
+    text(tip, W / 2, 434, 24, cam && squat.bend === null ? RED : '#e9e4da', 'center');
+    text('Slash on the beat · Squat to slow time · Esc for levels', W / 2, 472, 18, PALE, 'center');
   }
   if (state === 'over') {
     const won = game.hp > 0, hits = game.perfect + game.good;
@@ -701,19 +753,19 @@ function drawScreens() {
       ['Time squatting', `${game.squatTime.toFixed(1)} s`],
     ];
     panel(470, 150, 660, 520);
-    text(won ? 'YOU BECAME LEGEND' : 'FALLEN ON THE STEPPE', W / 2, 225, 46, won ? GOLD : RED, 'center');
+    text(level.practice ? 'TUTORIAL COMPLETE' : won ? 'YOU BECAME LEGEND' : 'FALLEN ON THE STEPPE', W / 2, 225, 46, won ? GOLD : RED, 'center');
     rows.forEach(([k, v], i) => {
       text(k, 540, 300 + i * 44, 24, PALE);
       text(String(v), 1060, 300 + i * 44, 24, '#fff', 'right');
     });
-    if (clock - overAt > 2) text(mode === 'cam' ? 'Swing to ride again' : 'Press Space to ride again', W / 2, 636, 26, GOLD, 'center');
+    if (clock - overAt > 2) text(`${mode === 'cam' ? 'Swing to ride again' : 'Press Space to ride again'} · Esc for levels`, W / 2, 636, 26, GOLD, 'center');
   }
 }
 
 function draw() {
   const wrath = state === 'play' && game.combo >= WRATH;
   const slowAmt = (1 - game.slow) / (1 - SLOW);
-  const pulse = 1 - (((((game.t - DOWNBEAT) / BEAT) % 1) + 1) % 1);
+  const pulse = 1 - (((beat.of(game.t) % 1) + 1) % 1);
   ctx.save();
   if (game.shake > 0.5) ctx.translate((Math.random() - 0.5) * game.shake, (Math.random() - 0.5) * game.shake);
   drawWorld();
@@ -771,8 +823,21 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
+function toMenu() {
+  state = 'menu';
+  try {
+    music?.stop();
+  } catch {}
+  game = newGame();
+  game.slow = 1;
+  muffle.frequency.setTargetAtTime(20000, ac.currentTime, 0.05);
+  $('#menu').hidden = false;
+  $('#cam').focus();
+}
+
 addEventListener('keydown', e => {
   if (state === 'menu' || e.repeat) return;
+  if (e.code === 'Escape') return toMenu();
   if (e.code === 'Space') {
     e.preventDefault();
     slash();
@@ -801,24 +866,42 @@ try {
 } catch {}
 setScene(scene);
 
-const buttons = [$('#cam'), $('#keys')];
-function go(m) {
-  mode = m;
-  state = 'ready';
-  $('#menu').hidden = true;
+let chosen = 'tutorial';
+function pick(id) {
+  chosen = id;
+  for (const b of document.querySelectorAll('#levels button')) b.setAttribute('aria-pressed', b.dataset.level === id);
+  try {
+    localStorage.setItem('level', id);
+  } catch {}
 }
-$('#keys').onclick = () => (ac.resume(), go('keys'));
-$('#cam').onclick = async () => {
+for (const b of document.querySelectorAll('#levels button')) b.onclick = () => pick(b.dataset.level);
+try {
+  const saved = localStorage.getItem('level');
+  if (LEVELS[saved]) chosen = saved;
+} catch {}
+pick(chosen);
+
+const buttons = [$('#cam'), $('#keys')];
+async function go(m) {
   ac.resume();
   buttons.forEach(b => (b.disabled = true));
-  say('Loading pose model…');
   try {
-    await startCamera();
-    go('cam');
+    if (m === 'cam' && !pose) {
+      say('Loading pose model…');
+      await startCamera();
+    }
+    say('Loading song…');
+    await load(chosen);
+    mode = m;
+    state = 'ready';
+    $('#menu').hidden = true;
+    say('');
   } catch (e) {
-    say(`Webcam unavailable (${e.message}). You can still play in keyboard mode.`);
-    buttons.forEach(b => (b.disabled = false));
+    say(m === 'cam' ? `Webcam unavailable (${e.message}). You can still play in keyboard mode.` : e.message);
   }
-};
+  buttons.forEach(b => (b.disabled = false));
+}
+$('#keys').onclick = () => go('keys');
+$('#cam').onclick = () => go('cam');
 buttons.forEach(b => (b.disabled = false));
 say('Webcam: stand 2–3 m back so your knees are in view. Keyboard: Space slashes, hold S to squat.');

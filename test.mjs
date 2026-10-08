@@ -1,19 +1,29 @@
 import assert from 'node:assert/strict';
-import { BEAT, CHART, DOWNBEAT, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
+import { LEVELS, beatMap, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
 
-assert.ok(CHART.every(bar => /^[.as*]{8}$/.test(bar)), 'every bar is 8 eighths of spears, shields and strikes');
-const notes = buildChart();
-assert.ok(notes.every((n, i) => i === 0 || n.t > notes[i - 1].t), 'notes in time order');
-assert.ok(notes[0].t > DOWNBEAT + 3 * 4 * BEAT - 1e-9, 'nothing before bar 3, while the intro settles');
-const eighths = n => (n.t - DOWNBEAT) / (BEAT / 2);
-assert.ok(notes.every(n => Math.abs(eighths(n) - Math.round(eighths(n))) < 1e-6), "every note sits on the song's eighth-note grid");
-assert.ok(notes.at(-1).t < 254.5, 'nothing after the final hit at 254.1 s');
-assert.ok(notes.some(n => n.dense) && notes.some(n => !n.dense), 'runs of eighths to squat through, and room to breathe');
+for (const [id, level] of Object.entries(LEVELS)) {
+  const beat = beatMap(level), say = what => `${id}: ${what}`;
+  assert.ok(level.chart.every(bar => /^[.as*]{8}$/.test(bar)), say('every bar is 8 eighths of spears, shields and strikes'));
+  const notes = buildChart(level);
+  assert.ok(notes.every((n, i) => i === 0 || n.t > notes[i - 1].t), say('notes in time order'));
+  assert.ok(notes[0].t >= beat.at(level.firstBar * 4) - 1e-9, say('nothing before the first bar, while the intro settles'));
+  const eighths = n => beat.of(n.t) * 2;
+  assert.ok(notes.every(n => Math.abs(eighths(n) - Math.round(eighths(n))) < 1e-6), say("every note sits on the song's eighth notes"));
+  assert.ok(notes.some(n => n.dense) && notes.some(n => !n.dense), say('runs of eighths to squat through, and room to breathe'));
+  const raids = planRaids(notes);
+  assert.ok(notes.every(n => raids.includes(n.raid) && n.raid.notes.includes(n)), say('every note has a horseman'));
+  assert.ok(raids.every(r => r.strike === r.notes.at(-1) && r.notes.filter(n => n.type === 'strike').length === 1), say('each horseman ends his raid with one charge'));
+  assert.ok(raids.every(r => r.notes.every(n => r.strike.t - n.t < 2.75 || n.dense)), say('he throws only as he closes in, or in a volley'));
+}
+assert.ok(buildChart(LEVELS.wolf).at(-1).t < 254.5, 'Wolf Totem: nothing after the final hit at 254.1 s');
+assert.ok(buildChart(LEVELS.khar).at(-1).t < 233, 'Khar Khulz: nothing after the band stops');
+assert.ok(LEVELS.tutorial.lessons.every((l, i, all) => i === 0 || l.bar > all[i - 1].bar), 'tutorial lessons in order');
 
-const raids = planRaids(notes);
-assert.ok(notes.every(n => raids.includes(n.raid) && n.raid.notes.includes(n)), 'every note has a horseman');
-assert.ok(raids.every(r => r.strike === r.notes.at(-1) && r.notes.filter(n => n.type === 'strike').length === 1), 'each horseman ends his raid with one charge');
-assert.ok(raids.every(r => r.notes.every(n => r.strike.t - n.t < 3 * BEAT + 1e-9 || n.dense)), 'he throws only as he closes in, or in a volley');
+const drift = beatMap({ beats: [1, 1.5, 2.1, 2.6] });
+assert.equal(drift.at(1.5), 1.8, 'a beat map follows a drifting tempo between beats');
+assert.equal(drift.of(1.8), 1.5);
+assert.equal(drift.at(-1), 0.5, '...and carries on at the edges');
+assert.ok(Math.abs(drift.at(4) - 3.1) < 1e-9);
 
 const pair = () => [{ t: 1, done: false }, { t: 1.5, done: false }];
 let ns = pair();

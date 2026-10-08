@@ -1,48 +1,72 @@
-export const TRACK = { file: 'The Hu- Wolf Totem.mp3', title: 'THE HU - WOLF TOTEM' };
-export const BPM = 86, BEAT = 60 / BPM;
-export const DOWNBEAT = 0.125 + 3 * BEAT;
+import { KHAR_KHULZ, WOLF_TOTEM } from './charts.js';
+
 export const PERFECT = 0.07, GOOD = 0.16;
 
 export const SWING_SPEED = 6, SWING_TRAVEL = 0.9;
 export const SQUAT_IN = 13, SQUAT_OUT = 7;
 
-// One string per bar of eighths, from bar FIRST_BAR on: a spear, s shield, * rider charging in.
-// Generated from the song's own hits by tools/chart.py; edit by hand or re-run it.
-const FIRST_BAR = 3;
-export const CHART = [
-  // CHART:start
-  '..*.....', '....s.*.', '......a.', '..*.....',
-  '....a...', '..*.....', '........', 's.*.....',
-  '....a...', '..*.....', '....a...', '..*.....',
-  '..a.....', '*.......', 'a...*...', 'aaaaaaaa',
-  '*.....s.', '*.......', '..a...*.', '..a.a...',
-  '*.....s.', '*...a.s.', '*.a.s.*.', '..a.a...',
-  '*...a...', 's.*.a...', 's.*.....', 'a.a...*.',
-  'a.s.*.a.', 's.*.a.s.', '*...a...', '*.a...s.',
-  '*...a.a.', '..*.a.s.', '*...a.a.', '..*.....',
-  '..a.s.*.', '..a...s.', '*.a.s.*.', 'aaaaaaaa',
-  '*...a.a.', '..*.....', 'a.a...*.', '..a.s.*.',
-  '......s.', '*.......', 'aaaaaaaa', '*.......',
-  'a.s.*...', '..a.a...', '*...a...', 's.*.a.s.',
-  '*.....a.', '.s..*...', 'a...s.*.', '..a.s.*.',
-  '..a..s..', '*.......', 'a.s.*...', '..a.s.*.',
-  '....a.a.', '..*...a.', 'a...*.a.', '..s.*...',
-  '........', '........', '*.......', '........',
-  'a...*...', '......s.', '*.......', 'aaaaaaaa',
-  '*.a.s.*.', '....a...', 's.*.a.a.', '..*.....',
-  'a.a...*.', 'a.s.*...', 'a.a...*.', '.s..*...',
-  '..a...s.', '*.a.s.*.', '....a.a.', '..*.....',
-  'a.a...*.', '..a...*.', '..a...*.', '........',
-  // CHART:end
-];
+// The tutorial plays over a drum loop, teaching one thing at a time. Each lesson starts at its bar; its
+// text has a keyboard and a webcam version. Misses cost no health here.
+const TUTORIAL = {
+  bpm: 90, downbeat: 2, firstBar: 1, practice: true,
+  chart: [
+    '........', '........',
+    '*.......', '........', '*.......', '........', '*...*...', '........',
+    'a...*...', '........', 'a...*...', '........', 'a.a.*...', '........',
+    's...*...', '........', 'a.s.*...', '........', 'a.s.*...', '........',
+    '........', 'aaaaaaaa', '*.......', '........', 'aaaaaaaa', '*.......', '........',
+    'a...s.*.', '..a.s.*.', 'a.s.*...', '*...*...', '........', '........',
+  ],
+  lessons: [
+    { bar: 1, title: 'THE TRACK', keys: 'Notes slide along the bottom track. Act when one reaches the star.', cam: 'Notes slide along the bottom track. Act when one reaches the star.' },
+    { bar: 3, title: 'CUT DOWN THE CHARGE', keys: 'A rider charges in. Press Space as he reaches you, on the beat.', cam: 'A rider charges in. Chop your arm down as he reaches you, on the beat.' },
+    { bar: 9, title: 'SPEARS', keys: 'From far out, riders throw spears. Slash each one as it reaches you, then the rider.', cam: 'From far out, riders throw spears. Chop each one as it reaches you, then the rider.' },
+    { bar: 15, title: 'SHIELDS', keys: 'Closer in, they hurl shields. Smash them the same way.', cam: 'Closer in, they hurl shields. Smash them the same way.' },
+    { bar: 21, title: 'SQUAT TO SLOW TIME', keys: 'A volley is too fast to slash. Hold S to slow time, release when it passes.', cam: 'A volley is too fast to slash. Squat and hold to slow time, stand up when it passes.' },
+    { bar: 28, title: 'RIDE', keys: 'Now all together. Keep your combo going.', cam: 'Now all together. Keep your combo going.' },
+    { bar: 33, title: 'READY FOR BATTLE', keys: 'Tutorial complete. Pick a song from the menu with Esc.', cam: 'Tutorial complete. Pick a song from the menu with Esc.' },
+  ],
+};
+
+export const LEVELS = {
+  tutorial: { title: 'TUTORIAL', scene: 'steppe', ...TUTORIAL },
+  wolf: { title: 'THE HU - WOLF TOTEM', file: 'The Hu- Wolf Totem.mp3', scene: 'steppe', ...WOLF_TOTEM },
+  khar: { title: 'UUHAI - KHAR KHULZ', file: 'Uuhai - Khar Khulz.mp3', scene: 'night', ...KHAR_KHULZ },
+};
+
+// Beat numbers (beat 0 is a downbeat, so bars start every 4) to song seconds and back. A steady song
+// has a bpm and downbeat; one played with a drifting tempo has its measured beat times.
+export function beatMap({ bpm, downbeat, beats }) {
+  if (!beats) {
+    const len = 60 / bpm;
+    return { at: b => downbeat + b * len, of: t => (t - downbeat) / len, len: () => len };
+  }
+  const n = beats.length, first = beats[1] - beats[0], last = beats[n - 1] - beats[n - 2];
+  const at = b => {
+    if (b <= 0) return beats[0] + b * first;
+    if (b >= n - 1) return beats[n - 1] + (b - n + 1) * last;
+    const i = Math.floor(b);
+    return beats[i] + (b - i) * (beats[i + 1] - beats[i]);
+  };
+  const of = t => {
+    if (t <= beats[0]) return (t - beats[0]) / first;
+    if (t >= beats[n - 1]) return n - 1 + (t - beats[n - 1]) / last;
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) beats[(lo + hi) >> 1] <= t ? (lo = (lo + hi) >> 1) : (hi = (lo + hi) >> 1);
+    return lo + (t - beats[lo]) / (beats[hi] - beats[lo]);
+  };
+  return { at, of, len: t => at(Math.floor(of(t)) + 1) - at(Math.floor(of(t))) };
+}
+
 const TYPES = { a: 'arrow', s: 'shield', '*': 'strike' };
 
-export function buildChart() {
-  const notes = [];
-  CHART.forEach((bar, i) => [...bar].forEach((c, j) => {
-    if (c !== '.') notes.push({ t: DOWNBEAT + (((FIRST_BAR + i) * 8 + j) * BEAT) / 2, type: TYPES[c], done: false });
+export function buildChart(level) {
+  const beat = beatMap(level), notes = [];
+  level.chart.forEach((bar, i) => [...bar].forEach((c, j) => {
+    if (c !== '.') notes.push({ t: beat.at((level.firstBar + i) * 4 + j / 2), type: TYPES[c], done: false });
   }));
-  notes.forEach((n, i) => (n.dense = notes[i + 1]?.t - n.t < BEAT * 0.6 || n.t - notes[i - 1]?.t < BEAT * 0.6));
+  const close = (a, b) => b && Math.abs(b.t - a.t) < 0.6 * beat.len(a.t);
+  notes.forEach((n, i) => (n.dense = close(n, notes[i + 1]) || close(n, notes[i - 1])));
   return notes;
 }
 
