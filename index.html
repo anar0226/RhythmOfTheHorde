@@ -34,6 +34,7 @@
   #scene { position: fixed; right: 12px; bottom: 12px; z-index: 2; display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: rgba(12, 10, 8, .72); }
   #scene button { margin: 0; padding: 5px 10px; border-color: rgba(242, 196, 107, .45); border-radius: 5px; background: transparent; color: #f2c46b; font-size: 12px; }
   #scene button[aria-pressed="true"] { background: #f2c46b; color: #1b140c; }
+  #keys { position: fixed; right: 12px; bottom: 54px; z-index: 2; margin: 0; padding: 7px 14px; background: rgba(12, 10, 8, .72); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -44,8 +45,8 @@
   <div class="cards">
     <div><img src="assets/UI/Ride Symbol.png" alt=""><b>Ride. Slash. Survive.</b>Chop down or swipe across to slash arrows, shields and strikes as they reach the line.</div>
     <div><img src="assets/UI/Squat Symbol.png" alt=""><b>Squat. Focus. Strike.</b>Squat and hold to slow time. Stand up to return to full speed.</div>
-    <div><img src="assets/UI/Khan's Wrath Symbol.png" alt=""><b>Keep your combo</b>40 hits in a row unleashes Khan's Wrath: 8× score.</div>
-    <div><img src="assets/UI/Become Legend Symbol.png" alt=""><b>Become legend</b>Survive the song. Every arrow or shield you miss costs health.</div>
+    <div><img src="assets/UI/Khan's Wrath Symbol.png" alt=""><b>Khan's Wrath</b>Spears rain down in rapid succession, too fast to slash. Squat through it to slow time and cut each one.</div>
+    <div><img src="assets/UI/Become Legend Symbol.png" alt=""><b>Become legend</b>Survive the song. Every 10 hits in a row raises your score, up to 8× at 40. Every miss costs health.</div>
   </div>
   <div id="levels" role="group" aria-label="Level">
     <button data-level="tutorial" aria-pressed="true">Tutorial<small>Learn to ride</small></button>
@@ -54,8 +55,8 @@
   </div>
   <div>
     <button id="cam" disabled>Ride with webcam</button>
-    <button id="keys" class="ghost" disabled>Keyboard mode</button>
   </div>
+  <button id="keys" class="ghost" disabled>Keyboard mode</button>
   <p id="status" aria-live="polite">Loading… If this message stays, serve this folder over http: run <code>python serve.py</code> here and open <code>http://localhost:8000</code>.</p>
 </div>
 <div id="scene" role="group" aria-label="Background">

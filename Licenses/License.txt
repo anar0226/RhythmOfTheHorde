@@ -1,2 +1,42 @@
 Rhythm of the Horde © 2026 by Bat-Ireedui Jadamba, Anar Borgil, 
 Yernar Abdikakhar is licensed under Creative Commons Attribution 4.0 International. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/
+
+That license covers the game's own code, art and charts. The third-party works below keep their own
+licenses and are not covered by it.
+
+
+THIRD-PARTY SOFTWARE SHIPPED WITH THE GAME
+
+MediaPipe Tasks Vision (vendor/mediapipe/vision_bundle.mjs, vendor/mediapipe/wasm/)
+  Copyright Google LLC. Licensed under the Apache License, Version 2.0.
+  https://github.com/google-ai-edge/mediapipe
+  https://www.apache.org/licenses/LICENSE-2.0
+
+MediaPipe Pose Landmarker (Lite) model (vendor/mediapipe/pose_landmarker_lite.task)
+  Copyright Google LLC. Licensed under the Apache License, Version 2.0.
+  https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+FONTS (loaded from Google Fonts, not bundled)
+
+Cinzel, by Natanael Gama
+  Licensed under the SIL Open Font License, Version 1.1.
+  https://fonts.google.com/specimen/Cinzel
+  https://openfontlicense.org
+
+
+MUSIC (assets/audio/)
+
+"Wolf Totem" by The HU
+"Khar Khulz" by Uuhai
+  These recordings are copyrighted by their respective artists, labels and publishers. All rights
+  reserved by their owners. They are not licensed under Creative Commons, and redistributing the game
+  with them requires the rights holders' permission.
+
+
+DEVELOPMENT TOOLS (tools/, used to build charts and sprite sheets; not shipped with the game)
+
+librosa         ISC License                         https://github.com/librosa/librosa
+NumPy           BSD 3-Clause License                https://numpy.org/license.html
+Pillow          MIT-CMU (HPND) License              https://github.com/python-pillow/Pillow

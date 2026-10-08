@@ -2,9 +2,10 @@
 Needs librosa (pip install librosa).
 
 A chart is one 8-character string per bar of eighths. It is a series of raids: each horseman
-charges in to strike on a strong drum hit (*) and throws on the song's other strong hits as he
-closes, spears (a) while still far out and shields (s) once near. Keep RAID and SHIELD in step with
-the rider speed and flight times in game.js.
+charges in to strike (*) on a downbeat and throws on the beats before it, spears (a) while still far
+out and shields (s) once near. Every hit is on a beat, in a steady pattern that changes only from one
+4-bar phrase to the next, so the player can ride the pulse; the song's loudness picks the pattern.
+Keep SHIELD in step with the rider speed and flight times in game.js.
 
 A song with a steady tempo is placed on a fixed grid (bpm, downbeat). A song played with a drifting
 tempo gets a beat map instead: tracked beats, snapped to the drum attacks and smoothed, which is
@@ -17,18 +18,20 @@ import librosa
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-RAID = 2.2  # seconds before his strike that a horseman can throw from
 SHIELD = 1.3  # closer than this to his strike, he throws shields instead of spears
-# loudness tiers: up to what bar loudness, how many seconds between charges, how many throws per rider.
-# Loudness is the bar's RMS, tuned on Wolf Totem; a louder mix gives "loud": its own loud level (90th percentile bar)
-# against Wolf Totem's (0.258), and the tiers are scaled by that ratio.
-TIERS = [(0.08, 5.58, 0), (0.13, 4.18, 1), (0.2, 2.79, 1), (np.inf, 2.09, 2)]
-VOLLEY = 0.15  # a volley needs the bar after it at least this loud
+PHRASE = 4  # bars
+# loudness tiers: up to what share of the song's phrases (quietest first), and the four bars a phrase
+# rides through (* a charge, x a throw at the next bar's charge), ending in a fill into the next phrase.
+TIERS = [
+    (0.15, ["*.......", "........", "*.......", "........"]),
+    (0.4, ["*.......", "*.......", "*.......", "*...x..."]),
+    (0.7, ["*...x...", "*...x...", "*...x...", "*.x.x..."]),
+    (1, ["*.x.x...", "*.x.x...", "*.x.x...", "*.x.x.x."]),
+]
 
 SONGS = {
     "WOLF_TOTEM": dict(file="The Hu- Wolf Totem.mp3", bpm=86, downbeat=0.125 + 3 * 60 / 86, bars=(3, 90)),
-    # mixed louder than Wolf Totem, so its tiers are scaled to its own loud level
-    "KHAR_KHULZ": dict(file="Uuhai - Khar Khulz.mp3", bpm=125, bars=(4, 119), loud=True),
+    "KHAR_KHULZ": dict(file="Uuhai - Khar Khulz.mp3", bpm=125, bars=(4, 119)),
 }
 
 
@@ -69,7 +72,7 @@ def beat_map(a, bpm):
     return np.array(out)
 
 
-def chart(a, beat_at, bars, loud=False):
+def chart(a, beat_at, bars):
     def peak(e, t, w=0.03):
         i, j = np.searchsorted(a["times"], [t - w, t + w])
         return e[i:j].max()
@@ -79,42 +82,44 @@ def chart(a, beat_at, bars, loud=False):
         return a["rms"][i:j].mean()
 
     first, last = bars
-    slots = np.array([beat_at(bar * 4 + k / 2) for bar in range(first, last + 1) for k in range(8)])
-    lo, md, hi = (np.array([peak(a[e], t) for t in slots]) for e in ("low", "mid", "high"))
-    hit = hi + md + 0.6 * lo
-    bar_level = np.array([level(beat_at(bar * 4), beat_at(bar * 4 + 4)) for bar in range(first, last + 1)])
-    scale = np.percentile(bar_level, 90) / 0.258 if loud else 1
-    tier = [next(t for t in TIERS if lv < t[0] * scale) for lv in np.repeat(bar_level, 8)]
-    on_beat = np.arange(len(slots)) % 2 == 0
-    # volleys of eighths (the cue to squat and slow time) on the drum fill before the band gets louder
-    volleys = {i for i in range(len(bar_level) - 1) if bar_level[i + 1] > 1.25 * bar_level[i] and bar_level[i + 1] >= VOLLEY * scale}
+    n = last - first + 1
+    down = [beat_at((first + i) * 4) for i in range(n)]
+    bar_level = np.array([level(beat_at((first + i) * 4), beat_at((first + i) * 4 + 4)) for i in range(n)])
+    hit = np.array([peak(a["high"], t) + peak(a["mid"], t) + 0.6 * peak(a["low"], t) for t in down])
 
-    n, row, strike, last_charge, k = len(slots), ["."] * len(slots), on_beat & (hit > 1.2), None, 0
-    while k < n:
-        if k // 8 in volleys and k % 8 == 0 and k + 8 < n:
-            # one rider looses a volley through the whole bar and charges on the next downbeat
-            row[k:k + 8] = ["a"] * 8
-            row[k + 8], last_charge, k = "*", k + 8, k + 9
-            continue
-        gap = tier[k][1]
-        if (last_charge is None or slots[k] - slots[last_charge] >= gap - 1e-6) and strike[k]:
-            # take the strongest drum hit on a beat within the next bar as this rider's charge
-            best = max((j for j in range(k, min(n, k + 8)) if strike[j]), key=lambda j: lo[j] + 0.5 * hit[j])
-            # his throws come after the previous rider's charge
-            lead = [j for j in range(max(0, best - 16, -1 if last_charge is None else last_charge + 1), best - 1)
-                    if slots[best] - slots[j] <= RAID and row[j] == "." and hit[j] > 0.9]
-            row[best], last_charge = "*", best
-            for j in sorted(lead, key=lambda j: -hit[j]):
-                taken = [i for i in lead if row[i] != "."]
-                if len(taken) < tier[best][2] and all(abs(i - j) >= 2 for i in taken) and row[j - 1] == "." and row[j + 1] == ".":
-                    row[j] = "s" if slots[best] - slots[j] < SHIELD else "a"
-            k = best + 1
-            continue
-        k += 1
-    return ["".join(row[i:i + 8]) for i in range(0, n, 8)]
+    # phrases lined up so the song's jumps in loudness fall on their first bars
+    jumps = [i + 1 for i in range(n - 1) if bar_level[i + 1] > 1.25 * bar_level[i]]
+    phase = max(range(PHRASE), key=lambda p: sum((j - p) % PHRASE == 0 for j in jumps))
+    phrases = {}
+    for i in range(n):
+        phrases.setdefault((i - phase) // PHRASE, []).append(i)
+    loudness = {p: bar_level[bars].mean() for p, bars in phrases.items()}
+    rank = {p: np.mean([lv < loudness[p] for lv in loudness.values()]) for p in phrases}
+    tier = {p: next(k for k, (share, _) in enumerate(TIERS) if rank[p] < share) for p in phrases}
+
+    rows = []
+    for i in range(n):
+        k = tier[(i - phase) // PHRASE]
+        row = list(TIERS[k][1][(i - phase) % PHRASE])
+        if k == 0 and hit[i] < 1.2:
+            row[0] = "."  # a quiet bar only gets a rider on a real drum hit
+        rows.append(row)
+    # a volley of spears (the cue to squat and slow time) on the drum fill before a louder phrase,
+    # its rider charging on the phrase's first downbeat
+    for p, bars in phrases.items():
+        if p + 1 in phrases and loudness[p + 1] > 1.15 * loudness[p] and tier[p + 1] >= 2:
+            rows[bars[-1]] = list("aaaaaaaa")
+            rows[phrases[p + 1][0]][0] = "*"
+    # throws are at the next bar's charge, so none where no charge follows
+    for i, row in enumerate(rows):
+        for j, c in enumerate(row):
+            if c == "x":
+                charge = i + 1 < n and rows[i + 1][0] == "*"
+                row[j] = "." if not charge else "s" if down[i + 1] - beat_at((first + i) * 4 + j / 2) < SHIELD else "a"
+    return ["".join(r) for r in rows]
 
 
-out = ["// Generated by tools/chart.py from each song's own hits; edit by hand or re-run it.",
+out = ["// Generated by tools/chart.py from each song's beat and loudness; edit by hand or re-run it.",
        "// A chart is one string per bar of eighths, from bar firstBar on: a spear, s shield, * rider charging in."]
 for name, song in SONGS.items():
     a = analyse(song["file"])
@@ -126,7 +131,7 @@ for name, song in SONGS.items():
         beats = beat_map(a, song["bpm"])
         entry.update(bpm=song["bpm"], beats=[round(float(t), 3) for t in beats])
         beat_at = lambda b, bs=beats: float(np.interp(b, np.arange(len(bs)), bs))
-    rows = chart(a, beat_at, song["bars"], song.get("loud", False))
+    rows = chart(a, beat_at, song["bars"])
     notes = sum(c != "." for r in rows for c in r)
     print(f"{name}: {notes} notes over {len(rows)} bars")
     body = json.dumps({k: v for k, v in entry.items() if k != "beats"})[:-1]

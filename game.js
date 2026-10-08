@@ -10,7 +10,7 @@ const MODEL = new URL('vendor/mediapipe/pose_landmarker_lite.task', location.hre
 //Fix the ger,ovoo and emeel so that they are not just floating around//
 
 const W = 1600, H = 900, GROUND = 745, FIELD = GROUND - 10;
-const SLOW = 0.5, MAX_HP = 10, WRATH = 40;
+const SLOW = 0.5, MAX_HP = 10, TOP_COMBO = 40;
 const HURT = 0.7, SLASH = 0.26;
 const HIT_X = 150, NOTE_Y = 800, PX = 420;
 const FLIGHT = { arrow: 1.0, shield: 0.8 };
@@ -231,11 +231,11 @@ function track(now, meta) {
 let state = 'menu', mode = null, overAt = 0;
 const newGame = (notes = buildChart(level)) => ({
   t: 0, notes, raids: planRaids(notes), score: 0, combo: 0, best: 0, hp: MAX_HP, perfect: 0, good: 0, miss: 0,
-  swings: 0, squatTime: 0, slow: 1, hurt: 0, slash: 0, shake: 0, flash: 0, fx: [],
+  swings: 0, squatTime: 0, slow: level.pace, hurt: 0, slash: 0, shake: 0, flash: 0, fx: [],
   squatting: false, swingReadyAt: 0, squatReadyAt: 0, corpses: [], kills: 0,
 });
 let game = newGame();
-const multiplier = combo => (combo >= WRATH ? 8 : 1 + Math.floor(combo / 10));
+const multiplier = combo => (combo >= TOP_COMBO ? 8 : 1 + Math.floor(combo / 10));
 
 function begin() {
   game = newGame();
@@ -253,15 +253,23 @@ function end() {
   overAt = clock;
   game.slow = 1;
   muffle.frequency.setTargetAtTime(20000, ac.currentTime, 0.05);
+  if (level.practice) {
+    tutored = true;
+    try {
+      localStorage.setItem('tutored', '1');
+    } catch {}
+  }
   if (game.hp > 0) return sfx.gong();
   music.playbackRate.setTargetAtTime(0.05, ac.currentTime, 0.5);
   musicGain.gain.setTargetAtTime(0, ac.currentTime + 0.4, 0.4);
 }
 
+// Stretched with the level's pace, so a volley is still too quick to slash without squatting.
+const swingCooldown = () => SWING_COOLDOWN / level.pace;
 function slash(lag = 0) {
   if (state === 'ready' || (state === 'over' && clock - overAt > 2)) return sfx.whoosh(), begin();
   if (state !== 'play' || clock < game.swingReadyAt) return;
-  game.swingReadyAt = clock + SWING_COOLDOWN;
+  game.swingReadyAt = clock + swingCooldown();
   game.slash = SLASH;
   sfx.whoosh();
   game.swings++;
@@ -278,10 +286,10 @@ function hit(n) {
   game.score += (perfect ? 300 : 100) * multiplier(game.combo);
   sfx[n.type]();
   if (perfect) sfx.perfect();
-  if (game.combo === WRATH) {
+  if (game.combo === TOP_COMBO) {
     sfx.gong();
     game.flash = 0.6;
-    popup("KHAN'S WRATH!", W / 2, 330, 72, RED);
+    popup('8× COMBO!', W / 2, 330, 72, BLUE);
   }
   fx(S.spark, x, y, { scale: 0.4, grow: 1.2, life: 0.3, rot: Math.random() * 6 });
   if (n.type === 'arrow') fx(S.spearBroken, x, y, { scale: 0.2, vx: 350, vy: -450, g: 1500, vr: 7, life: 0.9 });
@@ -331,10 +339,10 @@ function update(dt) {
     game.t += (now - heard) * game.slow;
     heard = now;
   }
-  game.slow += ((squatting ? SLOW : 1) - game.slow) * Math.min(1, dt * 6);
+  game.slow += (level.pace * (squatting ? SLOW : 1) - game.slow) * Math.min(1, dt * 6);
   music.playbackRate.value = game.slow;
   if (squatting) game.squatTime += dt;
-  muffle.frequency.setTargetAtTime(1500 * 13 ** ((game.slow - SLOW) / (1 - SLOW)), ac.currentTime, 0.05);
+  muffle.frequency.setTargetAtTime(1500 * 13 ** ((game.slow / level.pace - SLOW) / (1 - SLOW)), ac.currentTime, 0.05);
   const late = GOOD + (mode === 'cam' ? CAM_LAG * game.slow : 0);
   for (const n of game.notes) if (!n.done && game.t > n.t + late) miss(n);
   if (game.hp <= 0 || game.t >= song.duration) end();
@@ -620,7 +628,7 @@ function drawHud(wrath, slowAmt, pulse) {
   text('COMBO', 40, 152, 20);
   text('x', 40, 204, 40);
   number(game.combo, 72, 164, 46);
-  for (let i = 0; i < 4; i++) spr(wrath ? S.starBlue : game.combo >= (i + 1) * 10 ? S.starGold : S.starEmpty, 58 + i * 46, 240, 0.27);
+  for (let i = 0; i < 4; i++) spr(game.combo >= TOP_COMBO ? S.starBlue : game.combo >= (i + 1) * 10 ? S.starGold : S.starEmpty, 58 + i * 46, 240, 0.27);
   const life = Math.max(0, game.hp) / MAX_HP;
   text('HP', 40, 290, 18);
   ctx.fillStyle = '#2b251e';
@@ -630,7 +638,7 @@ function drawHud(wrath, slowAmt, pulse) {
   ctx.strokeStyle = 'rgba(232,194,122,.6)';
   ctx.strokeRect(84, 274, 330, 18);
   if (state === 'play' || state === 'ready') {
-    cooldownIcon(S.trail, 70, 370, game.swingReadyAt - clock, SWING_COOLDOWN, game.slash > 0, 'SWING');
+    cooldownIcon(S.trail, 70, 370, game.swingReadyAt - clock, swingCooldown(), game.slash > 0, 'SWING');
     cooldownIcon(S.squatIcon, 170, 370, game.squatReadyAt - clock, SQUAT_COOLDOWN, game.squatting, 'SQUAT');
   }
 
@@ -673,11 +681,11 @@ function drawHud(wrath, slowAmt, pulse) {
     const x = HIT_X + (n.t - game.t) * PX;
     if (x > W + 60) break;
     if (n.done || x < -60) continue;
-    const s = n.type === 'arrow' ? (wrath ? S.noteArrowWrath : S.noteArrow) : n.type === 'shield' ? S.noteShield : S.noteStrike;
+    const s = n.type === 'arrow' ? (n.dense ? S.noteArrowWrath : S.noteArrow) : n.type === 'shield' ? S.noteShield : S.noteStrike;
     spr(s, x, NOTE_Y, 62 / Math.max(s[3], s[4]));
   }
   const slow = slowAmt > 0.5;
-  text(slow ? '‹‹  SLOW MOTION  ››' : 'NORMAL SPEED', W / 2, 882, 18, slow ? GOLD : '#9fc4e8', 'center');
+  text(slow ? '‹‹  SLOW MOTION  ››' : level.pace < 1 ? 'PRACTICE SPEED' : 'NORMAL SPEED', W / 2, 882, 18, slow ? GOLD : '#9fc4e8', 'center');
 }
 
 // A lesson's text appears a bar before its first notes, so there is time to read it.
@@ -696,7 +704,7 @@ function drawLesson() {
   lines.forEach((line, i) => text(line, W / 2, 166 + i * 26, 19, '#e9e4da', 'center'));
 }
 
-function drawPrompts(slowAmt) {
+function drawPrompts(slowAmt, wrath) {
   if (state !== 'play') return;
   drawLesson();
   const countIn = game.notes[0].t - game.t;
@@ -704,11 +712,12 @@ function drawPrompts(slowAmt) {
     const beats = Math.ceil(countIn / beat.len(game.t));
     text(beats > 4 ? 'GET READY' : String(beats), W / 2, 340, beats > 4 ? 64 : 120, GOLD, 'center');
   }
-  if (slowAmt < 0.5 && game.notes.some(n => n.dense && !n.done && n.t > game.t && n.t - game.t < 2.5)) {
+  if (slowAmt < 0.5 && wrath) {
     ctx.globalAlpha = 0.85 + 0.15 * Math.sin(clock * 10);
-    panel(580, 330, 440, 96);
-    spr(S.squatIcon, 635, 378, 0.26);
-    text('SQUAT AND HOLD', 692, 390, 32, GOLD);
+    panel(580, 316, 440, 124);
+    spr(S.squatIcon, 635, 386, 0.26);
+    text("KHAN'S WRATH", 692, 356, 22, RED);
+    text('SQUAT AND HOLD', 692, 404, 32, GOLD);
     ctx.globalAlpha = 1;
   }
 }
@@ -764,8 +773,9 @@ function drawScreens() {
 }
 
 function draw() {
-  const wrath = state === 'play' && game.combo >= WRATH;
-  const slowAmt = (1 - game.slow) / (1 - SLOW);
+  // Khan's Wrath: a volley of spears too quick to slash one by one, on screen now.
+  const wrath = state === 'play' && game.notes.some(n => n.dense && !n.done && n.t - game.t < 2.5);
+  const slowAmt = (1 - game.slow / level.pace) / (1 - SLOW);
   const pulse = 1 - (((beat.of(game.t) % 1) + 1) % 1);
   ctx.save();
   if (game.shake > 0.5) ctx.translate((Math.random() - 0.5) * game.shake, (Math.random() - 0.5) * game.shake);
@@ -784,7 +794,7 @@ function draw() {
   if (game.hurt > 0) fill(`rgba(190,20,10,${0.45 * (game.hurt / HURT) ** 2})`);
   if (game.flash > 0) fill(`rgba(255,235,200,${game.flash})`);
   drawHud(wrath, slowAmt, pulse);
-  drawPrompts(slowAmt);
+  drawPrompts(slowAmt, wrath);
   drawFx();
   drawScreens();
 }
@@ -867,7 +877,11 @@ try {
 } catch {}
 setScene(scene);
 
-let chosen = 'tutorial';
+// ponytail: "new player" means this browser has never finished the tutorial; tie it to accounts if logins ever exist
+let chosen = 'tutorial', tutored = false;
+try {
+  tutored = !!localStorage.getItem('tutored');
+} catch {}
 function pick(id) {
   chosen = id;
   for (const b of document.querySelectorAll('#levels button')) b.setAttribute('aria-pressed', b.dataset.level === id);
@@ -878,7 +892,7 @@ function pick(id) {
 for (const b of document.querySelectorAll('#levels button')) b.onclick = () => pick(b.dataset.level);
 try {
   const saved = localStorage.getItem('level');
-  if (LEVELS[saved]) chosen = saved;
+  if (LEVELS[saved] && tutored) chosen = saved;
 } catch {}
 pick(chosen);
 
@@ -905,4 +919,4 @@ async function go(m) {
 $('#keys').onclick = () => go('keys');
 $('#cam').onclick = () => go('cam');
 buttons.forEach(b => (b.disabled = false));
-say('Webcam: stand 2–3 m back so your knees are in view. Keyboard: Space slashes, hold S to squat.');
+say(`${tutored ? '' : 'New here? The tutorial is picked for you. '}Webcam: stand 2–3 m back so your knees are in view. Keyboard: Space slashes, hold S to squat.`);

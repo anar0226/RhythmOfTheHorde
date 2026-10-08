@@ -22,16 +22,18 @@ const TUTORIAL = {
     { bar: 3, title: 'CUT DOWN THE CHARGE', keys: 'A rider charges in. Press Space as he reaches you, on the beat.', cam: 'A rider charges in. Chop your arm down as he reaches you, on the beat.' },
     { bar: 9, title: 'SPEARS', keys: 'From far out, riders throw spears. Slash each one as it reaches you, then the rider.', cam: 'From far out, riders throw spears. Chop each one as it reaches you, then the rider.' },
     { bar: 15, title: 'SHIELDS', keys: 'Closer in, they hurl shields. Smash them the same way.', cam: 'Closer in, they hurl shields. Smash them the same way.' },
-    { bar: 21, title: 'SQUAT TO SLOW TIME', keys: 'A volley is too fast to slash. Hold S to slow time, release when it passes.', cam: 'A volley is too fast to slash. Squat and hold to slow time, stand up when it passes.' },
+    { bar: 21, title: "KHAN'S WRATH", keys: 'Spears rain down in rapid succession, too fast to slash. Hold S to slow time, release when they pass.', cam: 'Spears rain down in rapid succession, too fast to slash. Squat and hold to slow time, stand up when they pass.' },
     { bar: 28, title: 'RIDE', keys: 'Now all together. Keep your combo going.', cam: 'Now all together. Keep your combo going.' },
     { bar: 33, title: 'READY FOR BATTLE', keys: 'Tutorial complete. Pick a song from the menu with Esc.', cam: 'Tutorial complete. Pick a song from the menu with Esc.' },
   ],
 };
 
+// pace is the level's time scale when standing; squatting slows it further. The tutorial runs slow so
+// new riders have room to learn what a slash is, where the beat lands and how a squat feels.
 export const LEVELS = {
-  tutorial: { title: 'TUTORIAL', scene: 'steppe', ...TUTORIAL },
-  wolf: { title: 'THE HU - WOLF TOTEM', file: 'The Hu- Wolf Totem.mp3', scene: 'steppe', ...WOLF_TOTEM },
-  khar: { title: 'UUHAI - KHAR KHULZ', file: 'Uuhai - Khar Khulz.mp3', scene: 'night', ...KHAR_KHULZ },
+  tutorial: { title: 'TUTORIAL', scene: 'steppe', pace: 0.7, ...TUTORIAL },
+  wolf: { title: 'THE HU - WOLF TOTEM', file: 'The Hu- Wolf Totem.mp3', scene: 'steppe', pace: 1, ...WOLF_TOTEM },
+  khar: { title: 'UUHAI - KHAR KHULZ', file: 'Uuhai - Khar Khulz.mp3', scene: 'night', pace: 1, ...KHAR_KHULZ },
 };
 
 // Beat numbers (beat 0 is a downbeat, so bars start every 4) to song seconds and back. A steady song
