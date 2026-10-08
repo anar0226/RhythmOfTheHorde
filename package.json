@@ -5,6 +5,8 @@
   "scripts": {
     "start": "python serve.py",
     "test": "node test.mjs",
-    "frames": "python tools/rider_sheet.py"
+    "frames": "python tools/rider_sheet.py",
+    "chart": "python tools/chart.py",
+    "enemy-sheet": "python tools/enemy_sheet.py"
   }
 }
