@@ -34,44 +34,40 @@ assert.equal(judge(ns, 1.62).grade, 'good');
 assert.equal(judge([{ t: 1.25, done: false }, { t: 1, done: false }], 1.1).t, 1, 'closest note wins');
 assert.equal(judge(pair(), 2), null, 'outside the window is a whiff');
 
-function body({ hip = 0.55, sh = 0.3, knee = 0.75, wristY = 0.5, wristX = 0.4, dy = 0 } = {}) {
+function body({ hip = 0.55, sh = 0.3, knee = 0.75, wristY = 0.5, wristX = 0.4, dy = 0, grip = null, sit = 0 } = {}) {
   const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0.9 }));
   const at = (i, x, y) => (lm[i] = { x, y: y + dy, z: 0, visibility: 0.9 });
-  at(11, 0.45, sh), at(12, 0.55, sh), at(23, 0.47, hip), at(24, 0.53, hip), at(25, 0.47, knee), at(26, 0.53, knee);
-  at(15, wristX, wristY), at(16, 0.6, 0.55);
+  at(11, 0.45, sh + sit), at(12, 0.55, sh + sit), at(23, 0.47, hip + sit), at(24, 0.53, hip + sit), at(25, 0.47, knee), at(26, 0.53, knee);
+  if (grip) at(15, grip[0] - 0.02, grip[1]), at(16, grip[0] + 0.02, grip[1]);
+  else at(15, wristX, wristY), at(16, 0.6, 0.55);
   return lm;
 }
 
+// torso is 0.25 of the frame, so the sides are past 0.5 ± 0.09
 const run = (sw, frames, fps = 30) => frames.map((lm, f) => sw(lm, f / fps)).filter(t => t !== null);
-const still = Array.from({ length: 10 }, () => body());
-assert.deepEqual(run(swingDetector(), still), [], 'standing still');
+const hold = (n, p) => Array.from({ length: n }, () => body(p));
+const sweep = (n, from, to, y = 0.45) => Array.from({ length: n }, (_, f) => body({ grip: [from + ((to - from) * (f + 1)) / n, y] }));
+const right = hold(5, { grip: [0.72, 0.3] }), left = hold(5, { grip: [0.28, 0.3] });
+assert.deepEqual(run(swingDetector(), hold(10)), [], 'standing still');
+
+const cut = run(swingDetector(), [...right, ...sweep(5, 0.72, 0.28)]);
+assert.equal(cut.length, 1, 'both hands wound up to one side and swept across = one slash');
+assert.ok(Math.abs(cut[0] - 7 / 30) < 1 / 30, 'timed where the sword crosses the middle');
+assert.equal(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.28), ...left, ...sweep(5, 0.28, 0.72)]).length, 2, 'and straight back the other way');
+assert.equal(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.28), ...left, ...sweep(5, 0.28, 0.72)].filter((_, f) => f % 2 === 0), 15).length, 2, 'works at 15 fps');
+assert.deepEqual(run(swingDetector(), sweep(6, 0.5, 0.28)), [], 'no wind-up, no slash');
+assert.deepEqual(run(swingDetector(), [...right, ...sweep(60, 0.72, 0.28)]), [], 'drifting the hands across slowly is not a slash');
+assert.deepEqual(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.6)]), [], 'stopping short of the other side is not a slash');
 
 const chop = Array.from({ length: 6 }, (_, f) => body({ wristY: 0.2 + f * 0.075 }));
-const rest = Array.from({ length: 4 }, () => body({ wristY: 0.575 }));
-const once = run(swingDetector(), chop);
-assert.equal(once.length, 1, 'one chop = one slash, not one per frame');
-assert.ok(once[0] > 0 && once[0] < 5 / 30, 'the slash is timed inside the chop, not when it is noticed');
-assert.equal(run(swingDetector(), [...chop, ...rest, ...chop]).length, 2, 'the next chop is a new slash');
-assert.equal(run(swingDetector(), [...chop, ...rest, ...chop, ...rest].filter((_, f) => f % 2 === 0), 15).length, 2, 'works at 15 fps');
-
 const swipe = Array.from({ length: 6 }, (_, f) => body({ wristX: 0.2 + f * 0.06, wristY: 0.45 }));
-assert.equal(run(swingDetector(), swipe).length, 1, 'a sideways swipe slashes');
-
-const windup = Array.from({ length: 4 }, (_, f) => body({ wristY: 0.575 - (f + 1) * 0.09 }));
-const hits = run(swingDetector(), [...rest, ...windup, ...chop]);
-assert.equal(hits.length, 1, 'raising the arm to wind up is not a slash');
-assert.ok(hits[0] > (rest.length + windup.length) / 30, '...so it cannot use up the cooldown before the real chop');
-
-const drop = Array.from({ length: 7 }, (_, f) => body({ dy: f * 0.05 }));
+assert.deepEqual(run(swingDetector(), [...chop, ...swipe]), [], 'one hand alone is not a sword');
+const drop = Array.from({ length: 7 }, (_, f) => body({ dy: f * 0.05, grip: [0.72, 0.4] }));
 assert.deepEqual(run(swingDetector(), drop), [], 'squatting is not swinging');
 
-const glitch = [...rest, body({ wristY: 0.2 }), ...rest];
-assert.deepEqual(run(swingDetector(), glitch), [], 'a one-frame landmark glitch is not a slash');
-
 // World landmarks are metric, hip-centred, y down and z away from the camera.
-function pose({ thigh = 3, crouch = 0, lean = 0 } = {}) {
-  const lm = body({ dy: crouch * 0.25 });
-  lm[11].y -= crouch * 0.1, lm[12].y -= crouch * 0.1;
+function pose({ thigh = 3, crouch = 0, lean = 0, sit = crouch } = {}) {
+  const lm = body({ sit: sit * 0.15 });
   const r = (thigh * Math.PI) / 180, w = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0 }));
   for (const [s, x] of [[0, -0.1], [1, 0.1]]) {
     w[23 + s] = { x, y: 0, z: 0 };
@@ -81,20 +77,29 @@ function pose({ thigh = 3, crouch = 0, lean = 0 } = {}) {
   return [lm, w];
 }
 const feed = (sq, frames, t0 = 0) => frames.map(([lm, w], f) => sq(lm, w, t0 + f / 30));
-const hold = (n, p) => Array.from({ length: n }, () => pose(p));
+const still = (n, p) => Array.from({ length: n }, () => pose(p));
 const down = Array.from({ length: 10 }, (_, f) => pose({ thigh: 3 + (f + 1) * 5, crouch: (f + 1) / 10 }));
 
 let sq = squatDetector();
-assert.ok(!feed(sq, hold(20)).some(Boolean), 'standing');
-assert.ok(feed(sq, [...down, ...hold(5, { thigh: 50, crouch: 1 })], 1).at(-1), 'squatting');
-assert.ok(feed(sq, hold(12, { thigh: 5, crouch: 1 }), 2).at(-1), 'a chop in front of the legs can flatten the thighs for a moment...');
-assert.ok(!feed(sq, hold(20, { thigh: 5, crouch: 1 }), 2.4).at(-1), '...but a squat is not held forever');
-assert.ok(feed(sq, hold(15, { thigh: 50, crouch: 1 }), 3.5).at(-1));
-assert.ok(feed(sq, [[null, null], [null, null], [null, null]], 4).at(-1), 'a few lost frames keep the squat');
-assert.ok(!feed(sq, hold(10), 4.2).at(-1), 'standing up lets go quickly');
+assert.ok(!feed(sq, still(20)).some(Boolean), 'standing');
+assert.ok(feed(sq, [...down, ...still(5, { thigh: 50, crouch: 1 })], 1).at(-1), 'squatting');
+assert.ok(feed(sq, still(30, { thigh: 5, crouch: 1 }), 2).at(-1), 'a flattened 3D guess does not drop a squat the camera still sees');
+assert.ok(feed(sq, [[null, null], [null, null], [null, null]], 3).at(-1), 'a few lost frames keep the squat');
+assert.ok(!feed(sq, still(10), 3.2).at(-1), 'standing up lets go quickly');
 
 sq = squatDetector();
-assert.ok(!feed(sq, [...hold(20), ...hold(30, { thigh: 5, crouch: 0.6, lean: 45 })]).some(Boolean), 'bowing is not squatting');
+feed(sq, still(20));
+assert.ok(feed(sq, still(5, { thigh: 50, sit: 0 }), 1).at(-1), 'the 3D thigh tilt alone is a squat');
+sq = squatDetector();
+feed(sq, still(20));
+assert.ok(feed(sq, still(5, { thigh: 3, sit: 1 }), 1).at(-1), '...and so are thighs shortened on screen alone');
+
+sq = squatDetector();
+assert.ok(!feed(sq, [...still(20), ...still(30, { thigh: 5, sit: 0, lean: 45 })]).some(Boolean), 'bowing is not squatting');
+const knee = pose({ sit: 0.6 })[0];
+knee[25].y = knee[23].y + 0.2;
+sq = squatDetector();
+assert.ok(!feed(sq, [...still(20), ...Array.from({ length: 10 }, () => [knee, pose()[1]])]).some(Boolean), 'lifting one knee is not squatting');
 feed(sq, [pose({ thigh: 3 }).map((v, i) => (i ? v : body({ knee: 1.1 })))], 3);
 assert.equal(sq.bend, null, 'knees out of frame');
 

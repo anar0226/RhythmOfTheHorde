@@ -1,5 +1,5 @@
 import { FilesetResolver, PoseLandmarker } from './vendor/mediapipe/vision_bundle.mjs';
-import { GOOD, LEVELS, SQUAT_IN, SWING_SPEED, beatMap, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
+import { GOOD, LEVELS, beatMap, buildChart, judge, planRaids, squatDetector, swingDetector } from './logic.js';
 
 // MediaPipe Tasks Vision 1.0.1 and its lite pose model, shipped with the game so webcam mode needs no CDN
 const WASM = new URL('vendor/mediapipe/wasm', location.href).href;
@@ -232,7 +232,7 @@ let state = 'menu', mode = null, overAt = 0;
 const newGame = (notes = buildChart(level)) => ({
   t: 0, notes, raids: planRaids(notes), score: 0, combo: 0, best: 0, hp: MAX_HP, perfect: 0, good: 0, miss: 0,
   swings: 0, squatTime: 0, slow: level.pace, hurt: 0, slash: 0, shake: 0, flash: 0, fx: [],
-  squatting: false, swingReadyAt: 0, squatReadyAt: 0, corpses: [], kills: 0,
+  squatting: false, squatFresh: true, swingReadyAt: 0, squatReadyAt: 0, corpses: [], kills: 0,
 });
 let game = newGame();
 const multiplier = combo => (combo >= TOP_COMBO ? 8 : 1 + Math.floor(combo / 10));
@@ -329,11 +329,16 @@ function miss(n) {
 }
 
 function update(dt) {
+  // A squat tried during the cooldown doesn't kick in when it ends: stand up and squat again.
   const wants = camSquat || keySquat, now = audioClock();
+  if (!wants) game.squatFresh = true;
   if (game.squatting && !wants) {
     game.squatting = false;
     game.squatReadyAt = clock + SQUAT_COOLDOWN;
-  } else if (!game.squatting && wants && clock >= game.squatReadyAt) game.squatting = true;
+  } else if (!game.squatting && wants && game.squatFresh) {
+    if (clock >= game.squatReadyAt) game.squatting = true;
+    else game.squatFresh = false;
+  }
   const squatting = game.squatting;
   if (now > heard) {
     game.t += (now - heard) * game.slow;
@@ -588,11 +593,54 @@ function drawCamera() {
       ctx.lineTo(body[b].x * w, body[b].y * h);
     }
     ctx.stroke();
+    // light up the side the sword is wound up on
+    if (swing.ready) {
+      ctx.fillStyle = 'rgba(232,194,122,.25)';
+      ctx.fillRect(swing.ready > 0 ? w / 2 : 0, 0, w / 2, h);
+    }
   }
   ctx.restore();
   if (!body) text('STEP INTO VIEW', x + w / 2, y + h / 2, 16, RED, 'center');
-  meter('SWING', x, y + h + 16, w, swing.speed / (2 * SWING_SPEED), 0.5);
-  meter('SQUAT', x, y + h + 42, w, (squat.bend ?? 0) / (3 * SQUAT_IN), 1 / 3);
+  const grip = swing.ready ? ['CUT ACROSS!', BLUE] : swing.together ? ['WIND UP TO A SIDE', GOLD] : ['BOTH HANDS ON THE HILT', PALE];
+  text(grip[0], x + w / 2, y + h + 22, 13, grip[1], 'center');
+  meter('SQUAT', x, y + h + 42, w, (squat.depth ?? 0) / 3, 1 / 3);
+}
+
+// A looping stick figure showing the slash: both hands on the hilt, wound up beside one shoulder, cut
+// across to the other side, and back.
+function drawSlashDemo(x, y) {
+  panel(x, y, 210, 236);
+  text('HOW TO SLASH', x + 105, y + 26, 16, GOLD, 'center');
+  const cx = x + 105, cy = y + 140, p = (clock / 0.9) % 4, k = p % 2 < 1 ? 0 : Math.min(1, (p % 2) - 1) * 3;
+  const t = Math.min(1, k), back = p >= 2, s = (1 - Math.cos(Math.PI * t)) / 2, u = back ? 1 - s : s;
+  const gx = cx + 30 - 60 * u, gy = cy - 46 + 26 * Math.sin(Math.PI * u);
+  const blade = a => [gx + 46 * Math.cos(a), gy + 46 * Math.sin(a)], angle = q => ((-60 + 300 * q) * Math.PI) / 180;
+  ctx.lineCap = 'round';
+  if (t > 0 && t < 1) {
+    ctx.strokeStyle = 'rgba(150,190,230,.6)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    for (let i = 0; i <= 8; i++) {
+      const q = Math.max(0, t - 0.5 + i / 16), v = (1 - Math.cos(Math.PI * q)) / 2, w = back ? 1 - v : v;
+      const hx = cx + 30 - 60 * w, hy = cy - 46 + 26 * Math.sin(Math.PI * w), a = angle(w);
+      ctx[i ? 'lineTo' : 'moveTo'](hx + 46 * Math.cos(a), hy + 46 * Math.sin(a));
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#e9e4da';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy - 62, 10, 0, 7);
+  for (const [a, b, c, d] of [[cx, cy - 52, cx, cy], [cx - 14, cy - 44, cx + 14, cy - 44], [cx, cy, cx - 14, cy + 44], [cx, cy, cx + 14, cy + 44], [cx - 14, cy - 44, gx, gy], [cx + 14, cy - 44, gx, gy]])
+    ctx.moveTo(a, b), ctx.lineTo(c, d);
+  ctx.stroke();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(gx, gy);
+  ctx.lineTo(...blade(angle(u)));
+  ctx.stroke();
+  text(t > 0 && t < 1 ? '2  CUT ACROSS' : '1  WIND UP, HANDS TOGETHER', cx, y + 222, 12, t > 0 && t < 1 ? BLUE : PALE, 'center');
 }
 
 function cooldownIcon(sprite, x, y, wait, total, active, label) {
@@ -700,6 +748,7 @@ function drawLesson() {
     else lines.push(word);
   }
   panel(480, 96, 640, 58 + lines.length * 26);
+  if (lesson.slash && mode === 'cam') drawSlashDemo(1136, 96);
   text(lesson.title, W / 2, 132, 26, GOLD, 'center');
   lines.forEach((line, i) => text(line, W / 2, 166 + i * 26, 19, '#e9e4da', 'center'));
 }
@@ -744,12 +793,13 @@ function drawScreens() {
     const tip = !cam ? 'Space to slash · hold S to squat'
       : !body ? 'Step into the camera view'
       : squat.bend === null ? 'Step back until your knees are visible'
-      : 'Rider ready. Slash down to begin!';
+      : 'Rider ready. Slash across to begin!';
     panel(450, 270, 700, 230);
     text(level.title, W / 2, 318, 22, PALE, 'center');
     text(cam ? 'SWING TO RIDE' : 'PRESS SPACE TO RIDE', W / 2, 378, 46, GOLD, 'center');
     text(tip, W / 2, 434, 24, cam && squat.bend === null ? RED : '#e9e4da', 'center');
     text('Slash on the beat · Squat to slow time · Esc for levels', W / 2, 472, 18, PALE, 'center');
+    if (cam) drawSlashDemo(695, 520);
   }
   if (state === 'over') {
     const won = game.hp > 0, hits = game.perfect + game.good;
