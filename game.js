@@ -9,79 +9,102 @@ const MODEL = new URL('vendor/mediapipe/pose_landmarker_lite.task', location.hre
 //Make UI more opaque, more specifcally the swing and squat icons
 //Fix the ger,ovoo and emeel so that they are not just floating around//
 
-const W = 1600, H = 900, GROUND = 745, FIELD = GROUND - 10;
+// GROUND puts the horses' hooves level with the bottom of the gers' doors
+const W = 1600, H = 900, FIELD = 735, GROUND = 805;
 const SLOW = 0.5, MAX_HP = 10, TOP_COMBO = 40;
-const HURT = 0.7, SLASH = 0.26;
+const HURT = 0.7, SLASH = 0.26, HITSTOP = 0.09;
+// A canvas filter that paints a sprite solid white, keeping its outline.
+const WHITE = 'brightness(0) invert(1)';
 const HIT_X = 150, NOTE_Y = 800, PX = 420;
 const FLIGHT = { arrow: 1.0, shield: 0.8 };
-const RIDER = [380, GROUND], IMPACT = [600, 520];
+const RIDER = [380, GROUND], IMPACT = [600, GROUND - 225];
 // each horseman rides in at RIDE px/s to reach sword range on his strike, then tries to charge past at DASH
-const ENEMY_SCALE = 0.78, MELEE_X = 720, RIDE = 210, DASH = 700, OFFSCREEN = W + 260;
+const ENEMY_SCALE = 1.05, MELEE_X = 720, RIDE = 210, DASH = 700, OFFSCREEN = W + 260;
 const SWING_COOLDOWN = 0.35, SQUAT_COOLDOWN = 1.5, CAM_LAG = 0.3;
-const CELL = { gallop: [0, 1, 2, 3], slash: [4, 5], hurt: [6, 7], fallen: 8 }, RIDER_SCALE = 0.68;
+const CELL = { gallop: [0, 1, 0, 1], slash: [2, 3], hurt: [4, 5], fallen: 6 }, RIDER_SCALE = 1.2;
 const GOLD = '#e8c27a', RED = '#ff6b4a', BLUE = '#9fd3ff', PALE = '#cdb88f';
 
 const $ = s => document.querySelector(s);
 const ctx = $('canvas').getContext('2d');
 const say = msg => ($('#status').textContent = msg);
 
+// [file, crop x, y, w, h, k]: k scales the pixel art up to the size the painted art was drawn at.
 const S = {
-  spear: ['Perfect_projectile', 39, 13, 948, 125],
-  spearBroken: ['Broken_Projectile', 27, 153, 824, 105],
-  shield: ['Shield', 40, 16, 352, 357],
-  shieldCracked: ['Shield_2', 26, 22, 343, 338],
-  shieldShards: ['Shield_3', 57, 4, 254, 391],
-  spark: ['Spark', 44, 25, 303, 309],
+  spear: ['Spears', 9, 124, 335, 28, 2.83],
+  spearBroken: ['Spears', 9, 71, 335, 53, 2.83],
+  shield: ['Shield 1', 8, 34, 102, 99, 3.45],
+  shieldCracked: ['Shield 2', 8, 27, 128, 126, 2.75],
+  shieldShards: ['Shield Broken', 12, 27, 132, 126, 2.67],
+  spark: ['Spark', 16, 10, 153, 153, 1.98],
   trail: ['Sword_Trail', 15, 38, 479, 288],
   squatIcon: ['Squat Symbol', 0, 0, 296, 323],
   wrath: ["Khan's Wrath Symbol", 0, 0, 460, 388],
   legend: ['Become Legend Symbol', 0, 0, 371, 334],
   noteStrike: ['Rhythm_note_type_1', 66, 53, 232, 232],
   flare: ['Rhythm_note_type_1', 66, 325, 231, 251],
-  noteShield: ['Rhythm_note_type_2', 22, 60, 169, 171],
-  noteArrow: ['Rhythm_note_type_3', 57, 31, 258, 210],
-  noteArrowWrath: ['Rhythm_note_type_3', 20, 258, 372, 215],
-  starEmpty: ['Combo_Stars', 23, 49, 139, 136],
-  starGold: ['Combo_Stars', 172, 231, 138, 135],
-  starBlue: ['Combo_Stars', 467, 229, 140, 141],
+  noteShield: ['Shield 1', 8, 34, 102, 99],
+  noteArrow: ['Throwing knife', 5, 11, 110, 50],
+  noteArrowWrath: ['Throwing knife 2', 16, 6, 79, 58],
+  starEmpty: ['Stars', 16, 6, 78, 76, 1.78],
+  starGold: ['Stars', 184, 88, 78, 76, 1.78],
+  starBlue: ['Stars', 266, 88, 78, 76, 1.78],
+  // blood streaks fly towards their heavy end
+  bloodRight: ['Blood_3', 561, 17, 209, 71],
+  bloodRightLow: ['Blood_3', 269, 123, 116, 89],
+  bloodLeft: ['Blood_3', 530, 132, 178, 71],
+  bloodLeftLow: ['Blood_3', 924, 8, 107, 93],
+  bloodPool: ['Blood_2', 739, 100, 94, 36],
+  bloodDrop: ['Blood_3', 74, 38, 23, 28],
+  bloodSplat: ['Blood_2', 864, 86, 76, 55],
 };
-const EN = 'Enemy Horseman/Enemy_';
+// Enemy_Sheet cells (tools/pixel_sheets.py), anchored at their bottom-centre: frames 1-6 ride and swing, 7 stumbles, 8 lies dead.
+const enemyCell = k => ['Enemy_Sheet', k * 372, 0, 372, 327];
 const E = {
-  ride: [[`${EN}horseman_Frame_1`, 10, 12, 408, 514], [`${EN}horseman_Frame_2`, 2, 26, 395, 519], [`${EN}horseman_Frame_3`, 0, 6, 396, 535],
-    [`${EN}horseman_Frame_4`, 0, 14, 395, 528], [`${EN}horseman_Frame_5`, 0, 19, 385, 518]],
-  hit: [`${EN}horseman_Hit_Reaction`, 55, 41, 432, 394],
-  stumble: [`${EN}horseman_Stumble`, 24, 58, 456, 381],
-  falling: [`${EN}horse_falling`, 34, 176, 448, 252],
-  dead: [`${EN}Fallen_Horse_Death`, 45, 203, 463, 210],
-  // sword at side, raised, overhead, the slash, the follow-through; lined up by tools/enemy_sheet.py
-  attack: [0, 1, 2, 3, 4].map(k => [`${EN}Attack_Sheet`, k * 868, 0, 868, 566]),
+  ride: [enemyCell(0), enemyCell(3)],
+  hit: enemyCell(6),
+  falling: enemyCell(6),
+  dead: enemyCell(7),
+  // sword at side, raised, overhead, the slash, the follow-through
+  attack: [3, 2, 5, 1, 0].map(enemyCell),
 };
-const DIGITS = [[51, 101], [175, 65], [265, 100], [387, 93], [502, 104], [625, 94], [745, 96], [858, 98], [973, 96], [1091, 96]];
+// [x, y, w, h] of each digit in Number.png
+const DIGITS = [[19, 15, 58, 63], [83, 15, 40, 63], [127, 15, 54, 63], [185, 15, 54, 63], [247, 15, 54, 63], [309, 15, 58, 63],
+  [167, 90, 59, 68], [226, 90, 57, 68], [300, 90, 58, 68], [366, 90, 59, 68]];
 
 const FOLDERS = {
-  Character: ['Rider_Sheet'],
-  Ground: ['Background_map.jpg', 'Background1.png', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo'],
-  UI: ['Score_Numerals', 'Squat Symbol', "Khan's Wrath Symbol", 'Become Legend Symbol', 'Combo_Stars'],
-  effects: ['Spark', 'Sword_Trail'],
-  projectiles: ['Perfect_projectile', 'Broken_Projectile', 'Shield', 'Shield_2', 'Shield_3', 'Rhythm_note_type_1', 'Rhythm_note_type_2', 'Rhythm_note_type_3'],
+  Ground: ['Background2.png', 'Dirt', 'Tileable Groves'],
+  UI: ['Squat Symbol', "Khan's Wrath Symbol", 'Become Legend Symbol'],
+  effects: ['Sword_Trail'],
+  projectiles: ['Rhythm_note_type_1'],
+  pixel: ['Background_Day.jpg', 'Background_Night.jpg', 'Rider_Sheet', 'Enemy_Sheet', 'Ger', 'Emeel', 'Ovoo', 'Number', 'Spears', 'Shield 1', 'Shield 2', 'Shield Broken', 'Spark', 'Stars',
+    'Throwing knife', 'Throwing knife 2', 'Blood_2', 'Blood_3'],
 };
 const folderOf = Object.fromEntries(Object.entries(FOLDERS).flatMap(([dir, names]) => names.map(n => [n, dir])));
 const assetPath = name => `assets/${folderOf[name] ? `${folderOf[name]}/` : ''}${name}${/\.\w+$/.test(name) ? '' : '.png'}`;
 const IMG = {};
-const files = new Set([...Object.values(S), ...Object.values(E).flatMap(v => (Array.isArray(v[0]) ? v : [v]))].map(s => s[0]).concat('Rider_Sheet', 'Background_map.jpg', 'Background1.png', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo', 'Score_Numerals'));
+const files = new Set([...Object.values(S), ...Object.values(E).flatMap(v => (Array.isArray(v[0]) ? v : [v]))].map(s => s[0]).concat('Rider_Sheet', 'Background_Day.jpg', 'Background_Night.jpg', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo', 'Number'));
 const ac = new AudioContext();
+// Sound effects in assets/sfx and the volume each plays at.
+const CLIPS = { swing: 0.8, slash: 0.6, rock: 0.7, flesh: 1.5, gore: 0.6, ough: 0.7, grunt: 2.5, pain: 0.8, hurt: 0.9, splatter: 1, scream: 0.8 };
+const SFX = {};
+// Several clips open with silence; start each at its first sound so hits land on the beat.
+const onset = b => Math.max(0, b.getChannelData(0).findIndex(v => Math.abs(v) > 0.02) / b.sampleRate - 0.01);
 try {
   await Promise.all([...files].map(name => new Promise((ok, fail) => {
     IMG[name] = Object.assign(new Image(), { onload: ok, onerror: () => fail(new Error(`Missing ${assetPath(name)}`)), src: assetPath(name) });
   })));
+  await Promise.all(Object.keys(CLIPS).map(name => fetch(`assets/sfx/${name}.mp3`)
+    .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`Missing assets/sfx/${name}.mp3`))))
+    .then(data => ac.decodeAudioData(data))
+    .then(buffer => (SFX[name] = { buffer, skip: onset(buffer) }))));
 } catch (e) {
   say(e.message);
   throw e;
 }
 // Backgrounds to try out: the painting, the light the camp props are graded into, and a tint for the road.
 const SCENES = {
-  steppe: { image: 'Background_map.jpg', haze: [214, 190, 140], sun: [1, 0.93, 0.78], mist: 0.1 },
-  night: { image: 'Background1.png', haze: [26, 34, 80], sun: [0.3, 0.36, 0.66], mist: 0.3, road: '#46569a' },
+  steppe: { image: 'Background_Day.jpg', haze: [200, 222, 236], sun: [1, 1, 1], mist: 0 },
+  night: { image: 'Background_Night.jpg', haze: [26, 34, 80], sun: [0.3, 0.36, 0.66], mist: 0.3, road: '#46569a' },
   midday: { image: 'Background2.png', haze: [200, 222, 236], sun: [1, 1, 0.97], mist: 0.06 },
 };
 let scene = 'steppe';
@@ -200,9 +223,16 @@ const sfx = {
   shield: (w = ac.currentTime) => (hiss('lowpass', 1100, w, 0.3, 0.7), tone('triangle', 120, w, 0.2, 0.4)),
   strike: (w = ac.currentTime) => (tone('sine', 1568, w, 0.4, 0.25), tone('sine', 2349, w, 0.25, 0.12)),
   perfect: () => tone('sine', 3136, ac.currentTime, 0.15, 0.08),
-  hurt: (w = ac.currentTime) => (tone('sawtooth', 110, w, 0.3, 0.3).frequency.exponentialRampToValueAtTime(40, w + 0.3), hiss('lowpass', 500, w, 0.25, 0.6)),
   gong: () => [98, 147, 233, 311].forEach((f, i) => tone('sine', f, ac.currentTime, 2.4 - i * 0.4, 0.35 / (i + 1), muffle, 0.01)),
 };
+// Plays one of the named clips, chosen at random.
+function clip(...names) {
+  const name = names[Math.floor(Math.random() * names.length)];
+  const s = Object.assign(ac.createBufferSource(), { buffer: SFX[name].buffer }), g = ac.createGain();
+  g.gain.value = CLIPS[name];
+  s.connect(g).connect(muffle);
+  s.start(ac.currentTime, SFX[name].skip);
+}
 
 let pose = null, video = null, body = null, camSquat = false, keySquat = false, lastTs = 0;
 const swing = swingDetector(), squat = squatDetector();
@@ -232,6 +262,7 @@ let state = 'menu', mode = null, overAt = 0;
 const newGame = (notes = buildChart(level)) => ({
   t: 0, notes, raids: planRaids(notes), score: 0, combo: 0, best: 0, hp: MAX_HP, perfect: 0, good: 0, miss: 0,
   swings: 0, squatTime: 0, slow: level.pace, hurt: 0, slash: 0, shake: 0, flash: 0, fx: [],
+  seen: 0, stop: 0, impact: 0, victim: null,
   squatting: false, squatFresh: true, swingReadyAt: 0, squatReadyAt: 0, corpses: [], kills: 0,
 });
 let game = newGame();
@@ -260,6 +291,7 @@ function end() {
     } catch {}
   }
   if (game.hp > 0) return sfx.gong();
+  clip('scream');
   music.playbackRate.setTargetAtTime(0.05, ac.currentTime, 0.5);
   musicGain.gain.setTargetAtTime(0, ac.currentTime + 0.4, 0.4);
 }
@@ -271,7 +303,7 @@ function slash(lag = 0) {
   if (state !== 'play' || clock < game.swingReadyAt) return;
   game.swingReadyAt = clock + swingCooldown();
   game.slash = SLASH;
-  sfx.whoosh();
+  clip('swing');
   game.swings++;
   const n = judge(game.notes, songTime() - lag * game.slow);
   if (n) hit(n);
@@ -285,6 +317,7 @@ function hit(n) {
   game.best = Math.max(game.best, game.combo);
   game.score += (perfect ? 300 : 100) * multiplier(game.combo);
   sfx[n.type]();
+  clip({ arrow: 'slash', shield: 'rock', strike: 'flesh' }[n.type]);
   if (perfect) sfx.perfect();
   if (game.combo === TOP_COMBO) {
     sfx.gong();
@@ -302,20 +335,41 @@ function hit(n) {
   popup(perfect ? 'PERFECT!' : 'GOOD', HIT_X + 20, NOTE_Y - 70, 30, perfect ? BLUE : GOLD, true);
 }
 
+// Every hit lands hard: the world freezes for a beat with the victim flashed white, the screen
+// cuts to two black-and-white frames and shakes, and the victim is knocked back the way the blow went.
+function impact(victim) {
+  Object.assign(game, { stop: HITSTOP, impact: 2, shake: 6, victim });
+}
+
+// Blood sprays the way the blow travelled (dir 1 = right, -1 = left); the drops splat on the ground and fade.
+function bleed(x, y, dir) {
+  fx(dir > 0 ? S.bloodRight : S.bloodLeft, x + 40 * dir, y, { scale: 0.8, vx: 300 * dir, vy: -80, g: 900, life: 0.5 });
+  fx(dir > 0 ? S.bloodRightLow : S.bloodLeftLow, x + 20 * dir, y + 40, { scale: 0.8, vx: 200 * dir, vy: 60, g: 900, life: 0.5 });
+  for (let i = 0; i < 6; i++) {
+    fx(S.bloodDrop, x, y + Math.random() * 40, { scale: 1.2, vx: dir * (150 + Math.random() * 350), vy: -300 + Math.random() * 250, g: 1400, life: 3, land: S.bloodSplat });
+  }
+}
+
 function slay(raid) {
-  game.corpses.push({ x: rider(raid, game.t).x, age: 0 });
+  const { x } = rider(raid, game.t), corpse = { x, age: 0, kick: 500 };
+  game.corpses.push(corpse);
+  impact(corpse);
+  bleed(x, GROUND - 200, 1);
   raid.slain = true;
   game.kills++;
   game.score += 500 * multiplier(game.combo);
-  sfx.shield();
+  clip('gore');
+  clip('ough', 'grunt');
   popup('SLAIN!', W / 2, 330, 56, GOLD);
 }
 
 function damage() {
   game.hp--;
   game.hurt = HURT;
-  game.shake = 16;
-  sfx.hurt();
+  impact('rider');
+  bleed(RIDER[0] - 20, GROUND - 210, -1);
+  clip('pain', 'hurt');
+  clip('splatter');
 }
 
 function miss(n) {
@@ -359,9 +413,10 @@ function popup(text, x, y, size, color, judgement = false) {
   fx(null, x, y, { text, size, color, judgement, vy: -50, life: 0.8 });
 }
 
-function spr([name, sx, sy, sw, sh], x, y, scale, { rot = 0, alpha = 1, ay = 0.5, flip = false } = {}) {
-  const w = sw * scale, h = sh * scale;
+function spr([name, sx, sy, sw, sh, k = 1], x, y, scale, { rot = 0, alpha = 1, ay = 0.5, flip = false } = {}) {
+  const w = sw * scale * k, h = sh * scale * k;
   ctx.save();
+  ctx.imageSmoothingEnabled = folderOf[name] !== 'pixel';
   ctx.globalAlpha *= alpha;
   ctx.translate(x, y);
   ctx.rotate(rot);
@@ -392,9 +447,11 @@ function panel(x, y, w, h) {
 
 function number(n, x, y, h) {
   for (const d of String(n)) {
-    const [sx, sw] = DIGITS[d];
-    ctx.drawImage(IMG.Score_Numerals, sx, 20, sw, 143, x, y, (sw * h) / 143, h);
-    x += (sw * h) / 143 + 3;
+    const [sx, sy, sw, sh] = DIGITS[d];
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(IMG.Number, sx, sy, sw, sh, x, y, (sw * h) / sh, h);
+    ctx.imageSmoothingEnabled = true;
+    x += (sw * h) / sh + 3;
   }
 }
 
@@ -435,15 +492,15 @@ function bake(name, height, flip, { haze, sun, mist }) {
   }
   const pad = Math.round(w * 0.25), sink = Math.min(10, Math.max(2, Math.round(h * 0.06)));
   const out = new OffscreenCanvas(w + pad * 2, h + sink), g = out.getContext('2d');
+  g.imageSmoothingEnabled = false;
   g.save();
   if (flip) g.setTransform(-1, 0, 0, 1, out.width, 0);
   g.drawImage(src, sx, sy, sw, sh, pad, 0, w, h);
   g.restore();
   const px = g.getImageData(0, 0, out.width, out.height), d = px.data;
   for (let i = 0; i < d.length; i += 4) {
-    const lum = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
     for (let c = 0; c < 3; c++) {
-      const v = (24 + 0.84 * (lum + (d[i + c] - lum) * 0.8)) * sun[c];
+      const v = d[i + c] * sun[c];
       d[i + c] = v + (haze[c] - v) * mist;
     }
   }
@@ -467,18 +524,19 @@ function bake(name, height, flip, { haze, sun, mist }) {
 }
 
 // The camps stand in the middle of the road band, so they scroll with it.
+// Heights are whole multiples of each prop's art height (Ger 187, Emeel 182, Ovoo 199) so its pixels stay square.
 const CAMP_LOOP = 5400, CAMP_GROUND = (FIELD + H) / 2;
 const CAMP = [
-  ['Ger', 400, 450], ['Emeel', 770, 174, true], ['Ger', 1100, 372, true],
-  ['Ovoo', 2500, 420],
-  ['Emeel', 3740, 168], ['Ger', 4100, 420, true],
+  ['Ger', 400, 374], ['Emeel', 770, 182, true], ['Ger', 1100, 374, true],
+  ['Ovoo', 2500, 398],
+  ['Emeel', 3740, 182], ['Ger', 4100, 374, true],
 ];
 const CAMPS = Object.fromEntries(Object.entries(SCENES).map(([k, look]) => [k, CAMP.map(([name, x, h, flip]) => ({ x, ...bake(name, h, flip, look) }))]));
 function props() {
   const off = scroll % CAMP_LOOP;
   for (const { x: px, img, ax, ay } of CAMPS[scene]) {
     for (const x of [px - off, px - off + CAMP_LOOP]) {
-      if (x > -img.width && x < W + img.width) ctx.drawImage(img, Math.round(x - ax), CAMP_GROUND - ay);
+      if (x > -img.width && x < W + img.width) ctx.drawImage(img, Math.round(x - ax), Math.round(CAMP_GROUND - ay));
     }
   }
 }
@@ -496,7 +554,7 @@ function drawWorld() {
 }
 
 // How far through the current eighth note the song is, for the horses' gallop; a steady canter in the menus.
-const eighth = () => (((state === 'play' ? beat.of(game.t) * 2 : clock / 0.35) % 1) + 1) % 1;
+const eighth = () => (((state === 'play' ? beat.of(game.seen) * 2 : clock / 0.35) % 1) + 1) % 1;
 
 // Where a raid's horseman is at song time T (null while off screen or once cut down).
 function rider(raid, T) {
@@ -505,12 +563,17 @@ function rider(raid, T) {
 }
 
 function drawEnemies() {
-  for (const c of game.corpses) spr(c.age < 0.3 ? E.hit : c.age < 0.9 ? E.falling : E.dead, c.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
+  for (const c of game.corpses) if (c.age > 0.6) spr(S.bloodPool, c.x, GROUND - 4, 1.4, { alpha: Math.min(1, (c.age - 0.6) * 4) });
+  for (const c of game.corpses) {
+    ctx.filter = game.stop > 0 && game.victim === c ? WHITE : 'none';
+    spr(c.age < 0.3 ? E.hit : c.age < 0.9 ? E.falling : E.dead, c.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
+  }
+  ctx.filter = 'none';
   const stride = eighth();
   const gallop = E.ride[Math.floor(stride * E.ride.length)];
   for (const raid of game.raids) {
-    const at = rider(raid, game.t);
-    if (at) spr(swordArm(raid, game.t) ?? gallop, at.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
+    const at = rider(raid, game.seen);
+    if (at) spr(swordArm(raid, game.seen) ?? gallop, at.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
   }
 }
 
@@ -526,25 +589,29 @@ const arc = (p, [fx, fy], [tx, ty]) => [fx + (tx - fx) * p, fy + (ty - fy) * p -
 
 function drawProjectiles() {
   for (const n of game.notes) {
-    const left = n.t - game.t;
+    const left = n.t - game.seen;
     if (left > FLIGHT.arrow) break;
     if (n.done || n.type === 'strike' || left < -GOOD || left > FLIGHT[n.type]) continue;
     n.from ??= [rider(n.raid, n.t - FLIGHT[n.type]).x - 5, GROUND - 180];
     const p = 1 - left / FLIGHT[n.type], [x, y] = arc(p, n.from, IMPACT), [x2, y2] = arc(p + 0.01, n.from, IMPACT);
     if (n.type === 'arrow') spr(S.spear, x, y, 0.2, { rot: Math.atan2(y2 - y, x2 - x) });
-    else spr(S.shield, x, y, 0.24, { rot: game.t * 9 });
+    else spr(S.shield, x, y, 0.24, { rot: game.seen * 9 });
   }
 }
 
 function riderCell(cell, alpha, dx = 0, dy = 0) {
   const k = RIDER_SCALE;
   ctx.globalAlpha = alpha;
-  ctx.drawImage(IMG.Rider_Sheet, cell * 600, 0, 600, 480, RIDER[0] + dx - 290 * k, RIDER[1] + dy - 440 * k, 600 * k, 480 * k);
+  ctx.filter = game.stop > 0 && game.victim === 'rider' ? WHITE : 'none';
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(IMG.Rider_Sheet, cell * 372, 0, 372, 327, RIDER[0] + dx - 186 * k, RIDER[1] + dy - 327 * k, 372 * k, 327 * k);
+  ctx.imageSmoothingEnabled = true;
+  ctx.filter = 'none';
   ctx.globalAlpha = 1;
 }
 
 function drawRider() {
-  const knock = -26 * Math.max(0, game.hurt / HURT), sinceSlash = SLASH - game.slash;
+  const knock = -60 * Math.max(0, game.hurt / HURT) ** 2, sinceSlash = SLASH - game.slash;
   if (state === 'over' && game.hp <= 0) return riderCell(CELL.fallen, 1);
   const stride = eighth();
   const cell = game.hurt > 0 ? CELL.hurt[game.hurt > HURT - 0.15 ? 0 : 1]
@@ -847,14 +914,17 @@ function draw() {
   drawPrompts(slowAmt, wrath);
   drawFx();
   drawScreens();
+  if (game.impact > 0) {
+    ctx.filter = `grayscale(1) contrast(1000%)${game.impact-- === 1 ? ' invert(1)' : ''}`;
+    ctx.drawImage(ctx.canvas, 0, 0);
+    ctx.filter = 'none';
+  }
 }
 
 let last = performance.now(), clock = 0, scroll = 0, dust = 0;
-function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
-  last = now;
-  clock += dt;
-  if (state === 'play') update(dt);
+// Moves the world on by dt: the road, effects, timers and corpses.
+function step(dt) {
+  game.seen = game.t;
   const pace = state === 'play' ? game.slow : state === 'over' && game.hp <= 0 ? 0 : 1;
   scroll += dt * 650 * pace;
   if ((dust += dt * pace) > 0.06) {
@@ -868,15 +938,27 @@ function frame(now) {
     f.x += f.vx * fdt;
     f.y += f.vy * fdt;
     f.rot += f.vr * fdt;
+    // a drop that reaches the ground becomes a splat that rides away with the road and fades
+    if (f.land && f.y >= GROUND - 4) Object.assign(f, { sprite: f.land, land: null, y: GROUND - 4, vx: -650, vy: 0, g: 0, rot: 0, vr: 0, age: 0, life: 1.6 });
     return f.age < f.life;
   });
   game.hurt -= dt;
   game.slash -= dt;
   for (const c of game.corpses) {
     c.age += dt;
-    c.x -= 650 * pace * dt;
+    c.x += (c.kick - 650 * pace) * dt;
+    c.kick *= Math.exp(-8 * dt);
   }
   game.corpses = game.corpses.filter(c => c.x > -300);
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  clock += dt;
+  if (state === 'play') update(dt);
+  const frozen = state === 'play' && game.stop > 0;
+  game.stop -= dt;
+  if (!frozen) step(dt);
   game.flash -= dt;
   game.shake *= 0.88;
   draw();
