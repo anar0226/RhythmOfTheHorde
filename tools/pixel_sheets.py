@@ -1,7 +1,7 @@
 """Pack the pixel-art horsemen into the sheets game.js crops.
 
-Reads assets/pixel/Rider/Mongol Horseman 1..8.png and assets/pixel/Enemy/Enemy Horseman 1..8.png,
-aligns every frame's horse onto frame 1's horse and writes Rider_Sheet.png and Enemy_Sheet.png.
+Reads the PA Mongol Horseman Extra, PA Chingis Khaan and PA Enemy Horseman Extra frames, aligns every
+frame's horse onto the first frame's horse and writes Rider_PA_Sheet.png, Khan_PA_Sheet.png and Enemy_PA_Sheet.png.
 Each cell has the reference horse's bottom-centre at the cell's bottom-centre, so game.js anchors
 cells by their bottom-centre. Frames that are not a standing horse are stood on the same spot by
 their own bottom-centre. Prints the cell size game.js needs. Needs numpy and Pillow.
@@ -68,12 +68,24 @@ def sheet(frames, name):
     print(f"wrote {name}: {len(frames)} cells of {cw}x{ch}")
 
 
-rider = [load(f"Rider/Mongol Horseman {k}.png") for k in range(1, 9)]
-enemy = [load(f"Enemy/Enemy Horseman {k}.png") for k in range(1, 9)]
-# the fallen horse is drawn larger than the riding frames; 0.7 matches the flag and rider by eye
-enemy[7] = enemy[7].resize((round(enemy[7].width * 0.7), round(enemy[7].height * 0.7)), Image.NEAREST)
-# gallop (1, 8), slash (5, 6), hurt (1, 8 flushed red), fallen (the fallen horse)
-sheet([(rider[0], True), (rider[7], True), (rider[4], True), (rider[5], True),
-       (hurt(rider[0]), True), (hurt(rider[7]), True), (enemy[7], False)], "Rider_Sheet.png")
-# frames 1-6 ride and attack, 7 stumbles, 8 lies dead
-sheet([(f, k < 6) for k, f in enumerate(enemy)], "Enemy_Sheet.png")
+def scaled(img, k):
+    return img.resize((round(img.width * k), round(img.height * k)), Image.NEAREST)
+
+
+def frames(folder, name, n):
+    return [load(f"{folder}/{name} {k}.png") for k in range(1, n + 1)]
+
+
+enemy_a = frames("PA Enemy Horseman Extra", "Enemy Horseman Extra", 12)
+# set 2 is drawn about 9% larger than set 1; shrink it to match
+enemy_b = [scaled(f, 317 / 345) for f in frames("PA Enemy Horseman Extra", "Enemy Horseman Extra 2", 12)]
+# 16 cells per skin: frames 1-16 (1-5 gallop, 6-10 wind up, 11-15 slash, 16 recover),
+# then 17-18 hurt (frames 1, 2 flushed red) and 19 fallen (the enemy's dead horse)
+for folder, name, out in [("PA Mongol Horseman Extra", "Mongol Horseman Extra", "Rider_PA_Sheet.png"),
+                          ("PA Chingis Khaan", "Chingis Khaan", "Khan_PA_Sheet.png")]:
+    hero = frames(folder, name, 16)
+    sheet([(f, True) for f in hero] + [(hurt(hero[0]), True), (hurt(hero[1]), True), (enemy_b[11], False)], out)
+# 0-3 ride, 4-6 raise the sword, 7-8 slash and follow through, 9-10 hit, 11 falls, 12 lies dead
+sheet([(f, True) for f in [enemy_a[4], enemy_a[5], enemy_b[4], enemy_b[5], enemy_b[1], enemy_b[2], enemy_b[3],
+                           enemy_b[6], enemy_b[7], enemy_b[8], enemy_b[9]]]
+      + [(enemy_b[10], False), (enemy_b[11], False)], "Enemy_PA_Sheet.png")

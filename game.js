@@ -21,7 +21,11 @@ const RIDER = [380, GROUND], IMPACT = [600, GROUND - 225];
 // each horseman rides in at RIDE px/s to reach sword range on his strike, then tries to charge past at DASH
 const ENEMY_SCALE = 1.05, MELEE_X = 720, RIDE = 210, DASH = 700, OFFSCREEN = W + 260;
 const SWING_COOLDOWN = 0.35, SQUAT_COOLDOWN = 1.5, CAM_LAG = 0.3;
-const CELL = { gallop: [0, 1, 0, 1], slash: [2, 3], hurt: [4, 5], fallen: 6 }, RIDER_SCALE = 1.2;
+// cells of Rider_PA_Sheet and Khan_PA_Sheet (tools/pixel_sheets.py)
+const CELL = { gallop: [0, 1, 2, 3, 4], slash: [9, 10, 11, 12, 13, 14], hurt: [16, 17], fallen: 18 }, RIDER_SCALE = 1.2;
+// [sheet, cell w, cell h]; the Khan skin is behind a temporary debug button
+const SKINS = { rider: ['Rider_PA_Sheet', 370, 320], khan: ['Khan_PA_Sheet', 370, 325] };
+let skin = SKINS.rider;
 const GOLD = '#e8c27a', RED = '#ff6b4a', BLUE = '#9fd3ff', PALE = '#cdb88f';
 
 const $ = s => document.querySelector(s);
@@ -37,9 +41,9 @@ const S = {
   shieldShards: ['Shield Broken', 12, 27, 132, 126, 2.67],
   spark: ['Spark', 16, 10, 153, 153, 1.98],
   trail: ['Sword_Trail', 15, 38, 479, 288],
-  squatIcon: ['Squat Symbol', 0, 0, 296, 323],
-  wrath: ["Khan's Wrath Symbol", 0, 0, 460, 388],
-  legend: ['Become Legend Symbol', 0, 0, 371, 334],
+  squatIcon: ['Squat', 25, 39, 1161, 1215, 0.266],
+  wrath: ['Khans_Wrath', 0, 19, 1234, 1235, 0.314],
+  legend: ['Star', 0, 0, 1311, 1199, 0.279],
   noteStrike: ['Rhythm_note_type_1', 66, 53, 232, 232],
   flare: ['Rhythm_note_type_1', 66, 325, 231, 251],
   noteShield: ['Shield 1', 8, 34, 102, 99],
@@ -57,15 +61,15 @@ const S = {
   bloodDrop: ['Blood_3', 74, 38, 23, 28],
   bloodSplat: ['Blood_2', 864, 86, 76, 55],
 };
-// Enemy_Sheet cells (tools/pixel_sheets.py), anchored at their bottom-centre: frames 1-6 ride and swing, 7 stumbles, 8 lies dead.
-const enemyCell = k => ['Enemy_Sheet', k * 372, 0, 372, 327];
+// Enemy_PA_Sheet cells (tools/pixel_sheets.py), anchored at their bottom-centre.
+const enemyCell = k => ['Enemy_PA_Sheet', k * 386, 0, 386, 323];
 const E = {
-  ride: [enemyCell(0), enemyCell(3)],
-  hit: enemyCell(6),
-  falling: enemyCell(6),
-  dead: enemyCell(7),
+  ride: [0, 1, 2, 3].map(enemyCell),
+  hit: [9, 10].map(enemyCell),
+  falling: enemyCell(11),
+  dead: enemyCell(12),
   // sword at side, raised, overhead, the slash, the follow-through
-  attack: [3, 2, 5, 1, 0].map(enemyCell),
+  attack: [4, 5, 6, 7, 8].map(enemyCell),
 };
 // [x, y, w, h] of each digit in Number.png
 const DIGITS = [[19, 15, 58, 63], [83, 15, 40, 63], [127, 15, 54, 63], [185, 15, 54, 63], [247, 15, 54, 63], [309, 15, 58, 63],
@@ -73,19 +77,19 @@ const DIGITS = [[19, 15, 58, 63], [83, 15, 40, 63], [127, 15, 54, 63], [185, 15,
 
 const FOLDERS = {
   Ground: ['Background2.png', 'Dirt', 'Tileable Groves'],
-  UI: ['Squat Symbol', "Khan's Wrath Symbol", 'Become Legend Symbol'],
+  UI: ['Squat', 'Khans_Wrath', 'Star'],
   effects: ['Sword_Trail'],
   projectiles: ['Rhythm_note_type_1'],
-  pixel: ['Background_Day.jpg', 'Background_Night.jpg', 'Rider_Sheet', 'Enemy_Sheet', 'Ger', 'Emeel', 'Ovoo', 'Number', 'Spears', 'Shield 1', 'Shield 2', 'Shield Broken', 'Spark', 'Stars',
+  pixel: ['Background_Day.jpg', 'Background_Night.jpg', 'Rider_PA_Sheet', 'Khan_PA_Sheet', 'Enemy_PA_Sheet', 'Ger', 'Emeel', 'Ovoo', 'Number', 'Spears', 'Shield 1', 'Shield 2', 'Shield Broken', 'Spark', 'Stars',
     'Throwing knife', 'Throwing knife 2', 'Blood_2', 'Blood_3'],
 };
 const folderOf = Object.fromEntries(Object.entries(FOLDERS).flatMap(([dir, names]) => names.map(n => [n, dir])));
 const assetPath = name => `assets/${folderOf[name] ? `${folderOf[name]}/` : ''}${name}${/\.\w+$/.test(name) ? '' : '.png'}`;
 const IMG = {};
-const files = new Set([...Object.values(S), ...Object.values(E).flatMap(v => (Array.isArray(v[0]) ? v : [v]))].map(s => s[0]).concat('Rider_Sheet', 'Background_Day.jpg', 'Background_Night.jpg', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo', 'Number'));
+const files = new Set([...Object.values(S), ...Object.values(E).flatMap(v => (Array.isArray(v[0]) ? v : [v]))].map(s => s[0]).concat('Rider_PA_Sheet', 'Khan_PA_Sheet', 'Background_Day.jpg', 'Background_Night.jpg', 'Background2.png', 'Dirt', 'Tileable Groves', 'Ger', 'Emeel', 'Ovoo', 'Number'));
 const ac = new AudioContext();
 // Sound effects in assets/sfx and the volume each plays at.
-const CLIPS = { swing: 0.8, slash: 0.6, rock: 0.7, flesh: 1.5, gore: 0.6, ough: 0.7, grunt: 2.5, pain: 0.8, hurt: 0.9, splatter: 1, scream: 0.8 };
+const CLIPS = { sword: 0.8, sword1: 0.8, sword2: 0.8, horsegalloping: 0.5, slash: 0.6, rock: 0.7, flesh: 1.5, gore: 0.6, ough: 0.7, grunt: 2.5, pain: 0.8, hurt: 0.9, splatter: 1, scream: 0.8, scream2: 0.8, scream3: 0.8, scream4: 0.8 };
 const SFX = {};
 // Several clips open with silence; start each at its first sound so hits land on the beat.
 const onset = b => Math.max(0, b.getChannelData(0).findIndex(v => Math.abs(v) > 0.02) / b.sampleRate - 0.01);
@@ -136,7 +140,7 @@ master.gain.value = 0.5;
 muffle.frequency.value = 20000;
 muffle.connect(master).connect(ac.destination);
 musicGain.connect(muffle);
-let music = null, heard = 0;
+let music = null, gallop = null, heard = 0;
 
 function audioClock() {
   const { contextTime, performanceTime } = ac.getOutputTimestamp();
@@ -232,6 +236,7 @@ function clip(...names) {
   g.gain.value = CLIPS[name];
   s.connect(g).connect(muffle);
   s.start(ac.currentTime, SFX[name].skip);
+  return s;
 }
 
 let pose = null, video = null, body = null, camSquat = false, keySquat = false, lastTs = 0;
@@ -277,6 +282,8 @@ function begin() {
   musicGain.gain.cancelScheduledValues(ac.currentTime);
   musicGain.gain.setValueAtTime(1, ac.currentTime);
   music.start((heard = ac.currentTime));
+  // the clip fades out after 4 s, so only its first 4 s are used
+  gallop = Object.assign(clip('horsegalloping'), { loop: true, loopEnd: 4 });
 }
 
 function end() {
@@ -284,6 +291,8 @@ function end() {
   overAt = clock;
   game.slow = 1;
   muffle.frequency.setTargetAtTime(20000, ac.currentTime, 0.05);
+  gallop.stop();
+  for (const r of game.raids) r.gallop?.stop();
   if (level.practice) {
     tutored = true;
     try {
@@ -303,7 +312,7 @@ function slash(lag = 0) {
   if (state !== 'play' || clock < game.swingReadyAt) return;
   game.swingReadyAt = clock + swingCooldown();
   game.slash = SLASH;
-  clip('swing');
+  clip('sword', 'sword1', 'sword2');
   game.swings++;
   const n = judge(game.notes, songTime() - lag * game.slow);
   if (n) hit(n);
@@ -360,6 +369,8 @@ function slay(raid) {
   game.score += 500 * multiplier(game.combo);
   clip('gore');
   clip('ough', 'grunt');
+  raid.gallop?.stop();
+  if (Math.random() < 0.1) clip('scream', 'scream2', 'scream3', 'scream4');
   popup('SLAIN!', W / 2, 330, 56, GOLD);
 }
 
@@ -399,8 +410,10 @@ function update(dt) {
     heard = now;
   }
   game.slow += (level.pace * (squatting ? SLOW : 1) - game.slow) * Math.min(1, dt * 6);
-  music.playbackRate.value = game.slow;
+  music.playbackRate.value = gallop.playbackRate.value = game.slow;
   if (squatting) game.squatTime += dt;
+  // each enemy rider gallops in as it comes on screen
+  for (const raid of game.raids) if (!raid.gallop && rider(raid, game.t)) (raid.gallop = clip('horsegalloping')).stop(ac.currentTime + 4);
   muffle.frequency.setTargetAtTime(1500 * 13 ** ((game.slow / level.pace - SLOW) / (1 - SLOW)), ac.currentTime, 0.05);
   const late = GOOD + (mode === 'cam' ? CAM_LAG * game.slow : 0);
   for (const n of game.notes) if (!n.done && game.t > n.t + late) miss(n);
@@ -566,7 +579,7 @@ function drawEnemies() {
   for (const c of game.corpses) if (c.age > 0.6) spr(S.bloodPool, c.x, GROUND - 4, 1.4, { alpha: Math.min(1, (c.age - 0.6) * 4) });
   for (const c of game.corpses) {
     ctx.filter = game.stop > 0 && game.victim === c ? WHITE : 'none';
-    spr(c.age < 0.3 ? E.hit : c.age < 0.9 ? E.falling : E.dead, c.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
+    spr(c.age < 0.3 ? E.hit[c.age < 0.15 ? 0 : 1] : c.age < 0.9 ? E.falling : E.dead, c.x, GROUND, ENEMY_SCALE, { ay: 1, flip: true });
   }
   ctx.filter = 'none';
   const stride = eighth();
@@ -604,7 +617,8 @@ function riderCell(cell, alpha, dx = 0, dy = 0) {
   ctx.globalAlpha = alpha;
   ctx.filter = game.stop > 0 && game.victim === 'rider' ? WHITE : 'none';
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(IMG.Rider_Sheet, cell * 372, 0, 372, 327, RIDER[0] + dx - 186 * k, RIDER[1] + dy - 327 * k, 372 * k, 327 * k);
+  const [sheet, cw, ch] = skin;
+  ctx.drawImage(IMG[sheet], cell * cw, 0, cw, ch, RIDER[0] + dx - (cw / 2) * k, RIDER[1] + dy - ch * k, cw * k, ch * k);
   ctx.imageSmoothingEnabled = true;
   ctx.filter = 'none';
   ctx.globalAlpha = 1;
@@ -615,10 +629,9 @@ function drawRider() {
   if (state === 'over' && game.hp <= 0) return riderCell(CELL.fallen, 1);
   const stride = eighth();
   const cell = game.hurt > 0 ? CELL.hurt[game.hurt > HURT - 0.15 ? 0 : 1]
-    : game.slash > 0 && sinceSlash < 0.14 ? CELL.slash[sinceSlash < 0.07 ? 0 : 1]
-    : CELL.gallop[Math.floor(stride * 4)];
+    : game.slash > 0 ? CELL.slash[Math.min(CELL.slash.length - 1, Math.floor((sinceSlash / SLASH) * CELL.slash.length))]
+    : CELL.gallop[Math.floor(stride * CELL.gallop.length)];
   riderCell(cell, 1, knock, -5 * Math.sin(stride * 2 * Math.PI));
-  if (game.slash > 0 && sinceSlash >= 0.14) spr(S.trail, IMPACT[0] - 30, IMPACT[1] + 10, 0.5, { alpha: game.slash / (SLASH - 0.14) });
 }
 
 const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28]];
@@ -635,7 +648,7 @@ function meter(label, x, y, w, value, mark) {
 }
 
 function drawCamera() {
-  const x = 1368, y = 196, w = 212;
+  const x = 28, y = 196, w = 212;
   if (mode === 'keys') {
     panel(x - 8, y - 8, w + 16, 66);
     text('KEYBOARD', x + w / 2, y + 18, 16, GOLD, 'center');
@@ -736,6 +749,8 @@ function cooldownIcon(sprite, x, y, wait, total, active, label) {
 }
 
 function drawHud(wrath, slowAmt, pulse) {
+  ctx.save();
+  ctx.translate(W - 460, 0); // score panel sits on the right, camera on the left
   panel(20, 18, 420, 292);
   spr(S.legend, 72, 70, 0.25);
   text('SCORE', 135, 46, 20);
@@ -756,6 +771,7 @@ function drawHud(wrath, slowAmt, pulse) {
     cooldownIcon(S.trail, 70, 370, game.swingReadyAt - clock, swingCooldown(), game.slash > 0, 'SWING');
     cooldownIcon(S.squatIcon, 170, 370, game.squatReadyAt - clock, SQUAT_COOLDOWN, game.squatting, 'SQUAT');
   }
+  ctx.restore();
 
   const mx = 520, mw = 560;
   panel(mx, 18, mw, 66);
@@ -770,9 +786,9 @@ function drawHud(wrath, slowAmt, pulse) {
   ctx.save();
   if (wrath) Object.assign(ctx, { shadowColor: '#ff3b1f', shadowBlur: 25 + 25 * pulse });
   else ctx.globalAlpha = 0.35;
-  spr(S.wrath, 1474, 84, 0.3);
+  spr(S.wrath, 126, 84, 0.3);
   ctx.restore();
-  text("KHAN'S WRATH", 1474, 172, 18, wrath ? RED : '#8c7b66', 'center');
+  text("KHAN'S WRATH", 126, 172, 18, wrath ? RED : '#8c7b66', 'center');
   drawCamera();
 
   const g = ctx.createLinearGradient(0, 752, 0, H);
@@ -815,7 +831,7 @@ function drawLesson() {
     else lines.push(word);
   }
   panel(480, 96, 640, 58 + lines.length * 26);
-  if (lesson.slash && mode === 'cam') drawSlashDemo(1136, 96);
+  if (lesson.slash && mode === 'cam') drawSlashDemo(254, 96);
   text(lesson.title, W / 2, 132, 26, GOLD, 'center');
   lines.forEach((line, i) => text(line, W / 2, 166 + i * 26, 19, '#e9e4da', 'center'));
 }
@@ -970,6 +986,8 @@ function toMenu() {
   state = 'menu';
   try {
     music?.stop();
+    gallop?.stop();
+    for (const r of game.raids) r.gallop?.stop();
   } catch {}
   game = newGame();
   game.slow = 1;
@@ -1008,6 +1026,12 @@ try {
   if (SCENES[saved]) scene = saved;
 } catch {}
 setScene(scene);
+// temporary debug toggle for the Chinggis Khan skin
+$('#skin').onmousedown = e => e.preventDefault();
+$('#skin').onclick = e => {
+  skin = skin === SKINS.khan ? SKINS.rider : SKINS.khan;
+  e.target.setAttribute('aria-pressed', skin === SKINS.khan);
+};
 
 // ponytail: "new player" means this browser has never finished the tutorial; tie it to accounts if logins ever exist
 let chosen = 'tutorial', tutored = false;
