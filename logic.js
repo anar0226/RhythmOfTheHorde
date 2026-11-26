@@ -2,8 +2,9 @@ import { KHAR_KHULZ, WOLF_TOTEM } from './charts.js';
 
 export const PERFECT = 0.07, GOOD = 0.16;
 
-// Slash: hands closer than GRIP are on the hilt, wound up past ARM to a side, swept across in SWEEP s.
-export const GRIP = 0.7, ARM = 0.35, SWEEP = 0.35;
+// Slash: hands closer than GRIP are on the hilt, wound up past ARM to a side, then swept CROSS past the
+// middle, TRAVEL in all, within SWEEP s. TRAVEL is the workout: a bigger wind-up can finish shorter.
+export const GRIP = 0.7, ARM = 0.25, CROSS = 0.15, TRAVEL = 0.6, SWEEP = 0.5;
 // Squat: thigh tilt in degrees, or how much shorter the thighs look on screen (0..1).
 export const SQUAT_IN = 13, SQUAT_OUT = 7, DROP_IN = 0.4, DROP_OUT = 0.25;
 
@@ -140,7 +141,7 @@ export function squatDetector() {
 }
 
 // A slash is a two-handed sword stroke: both hands together on the hilt, wound up to one side of the
-// body, then swept across past the other side within SWEEP seconds. It's timed where the hands cross
+// body, then swept across the middle within SWEEP seconds, straight or diagonally down to the hip. It's timed where the hands cross
 // the middle. The stroke ends wound up on the far side, so the next slash can come straight back.
 // Distances are in torso lengths from the middle of the shoulders. Returns the stroke's time, or null.
 // detect.ready is the side the sword is wound up on (-1, 1 in image x, or 0); detect.together says
@@ -160,18 +161,23 @@ export function swingDetector() {
     prev = { seconds, width: prev ? prev.width + (width - prev.width) * follow(1, dt) : width };
     const hands = WRISTS.filter(w => lm[w].visibility >= 0.15).map(w => ({ x: ((lm[w].x - sh.x) * aspect) / scale, y: (lm[w].y - sh.y) / scale }));
     const together = (detect.together = hands.length === 2 && Math.hypot(hands[0].x - hands[1].x, hands[0].y - hands[1].y) < GRIP);
-    // mid-swing one wrist often blurs out; the other one is still holding the sword
-    const grip = together ? (hands[0].x + hands[1].x) / 2 : hands.length === 1 && ready ? hands[0].x : null;
+    // mid-swing a wrist often blurs out or slips; follow the hand that's furthest into the cut
+    const lead = ready && hands.length ? hands.map(h => h.x).sort((a, b) => (a - b) * ready.side)[0] : null;
+    const grip = together ? (hands[0].x + hands[1].x) / 2 : lead;
     let hit = null;
     if (ready && seconds - ready.t > SWEEP) ready = null;
     if (ready && grip !== null) {
       const now = grip * ready.side;
       if (ready.x > 0 && now <= 0) ready.cross = ready.tx + ((seconds - ready.tx) * ready.x) / (ready.x - now);
-      if (now < -ARM && ready.cross !== undefined) (hit = ready.cross), (ready = null);
+      if (now < -CROSS && ready.from - now >= TRAVEL && ready.cross !== undefined) (hit = ready.cross), (ready = null);
       else (ready.x = now), (ready.tx = seconds);
     }
-    if (together && Math.abs(grip) > ARM)
-      ready = { side: Math.sign(grip), t: seconds, x: Math.abs(grip), tx: seconds };
+    if (together && Math.abs(grip) > ARM) {
+      // the wind-up is its furthest point; the SWEEP clock starts when the hands leave it
+      const side = Math.sign(grip), same = ready?.side === side && ready.cross === undefined;
+      const from = Math.max(Math.abs(grip), same ? ready.from : 0), t = !same || Math.abs(grip) > from - 0.1 ? seconds : ready.t;
+      ready = { side, t, x: Math.abs(grip), tx: seconds, from };
+    }
     detect.ready = ready?.side ?? 0;
     if (hit === null || hit - last < 0.15) return null;
     return (last = hit);

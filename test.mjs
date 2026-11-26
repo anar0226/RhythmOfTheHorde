@@ -43,7 +43,7 @@ function body({ hip = 0.55, sh = 0.3, knee = 0.75, wristY = 0.5, wristX = 0.4, d
   return lm;
 }
 
-// torso is 0.25 of the frame, so the sides are past 0.5 ± 0.09
+// torso is 0.25 of the frame, so wound up is past 0.5 ± 0.0625
 const run = (sw, frames, fps = 30) => frames.map((lm, f) => sw(lm, f / fps)).filter(t => t !== null);
 const hold = (n, p) => Array.from({ length: n }, () => body(p));
 const sweep = (n, from, to, y = 0.45) => Array.from({ length: n }, (_, f) => body({ grip: [from + ((to - from) * (f + 1)) / n, y] }));
@@ -57,7 +57,13 @@ assert.equal(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.28), ...left, .
 assert.equal(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.28), ...left, ...sweep(5, 0.28, 0.72)].filter((_, f) => f % 2 === 0), 15).length, 2, 'works at 15 fps');
 assert.deepEqual(run(swingDetector(), sweep(6, 0.5, 0.28)), [], 'no wind-up, no slash');
 assert.deepEqual(run(swingDetector(), [...right, ...sweep(60, 0.72, 0.28)]), [], 'drifting the hands across slowly is not a slash');
-assert.deepEqual(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.6)]), [], 'stopping short of the other side is not a slash');
+assert.deepEqual(run(swingDetector(), [...right, ...sweep(5, 0.72, 0.6)]), [], 'stopping short of the middle is not a slash');
+const shoulder = hold(5, { grip: [0.6, 0.28] });
+const diagonal = Array.from({ length: 6 }, (_, f) => body({ grip: [0.6 - 0.03 * (f + 1), 0.28 + 0.053 * (f + 1)] }));
+assert.equal(run(swingDetector(), [...shoulder, ...diagonal]).length, 1, 'a diagonal cut from shoulder to the other hip');
+const loose = Array.from({ length: 6 }, (_, f) => body({ wristX: 0.6 - 0.04 * (f + 1), wristY: 0.3 }));
+assert.equal(run(swingDetector(), [...shoulder, ...loose]).length, 1, 'one hand slipping off the hilt mid-swing still cuts');
+assert.deepEqual(run(swingDetector(), [...hold(5, { grip: [0.57, 0.3] }), ...sweep(4, 0.57, 0.45)]), [], 'a small flick across the middle is not a slash');
 
 const chop = Array.from({ length: 6 }, (_, f) => body({ wristY: 0.2 + f * 0.075 }));
 const swipe = Array.from({ length: 6 }, (_, f) => body({ wristX: 0.2 + f * 0.06, wristY: 0.45 }));
