@@ -22,9 +22,10 @@ const RIDER = [380, GROUND], IMPACT = [600, GROUND - 225];
 const ENEMY_SCALE = 1.05, MELEE_X = 720, RIDE = 210, DASH = 700, OFFSCREEN = W + 260;
 const SWING_COOLDOWN = 0.35, SQUAT_COOLDOWN = 1.5, CAM_LAG = 0.3;
 // cells of Rider_PA_Sheet and Khan_PA_Sheet (tools/pixel_sheets.py)
-const CELL = { gallop: [0, 1, 2, 3, 4], slash: [9, 10, 11, 12, 13, 14], hurt: [16, 17], fallen: 18 }, RIDER_SCALE = 1.2;
-// [sheet, cell w, cell h]; the Khan skin is behind a temporary debug button
-const SKINS = { rider: ['Rider_PA_Sheet', 370, 320], khan: ['Khan_PA_Sheet', 370, 325] };
+const CELL = { slash: [9, 10, 11, 12, 13, 14], hurt: [16, 17], fallen: 18 }, RIDER_SCALE = 1.2;
+// [sheet, cell w, cell h, gallop cells]; the Khan skin is behind a temporary debug button.
+// Both gallop on frames 1-3; frames 4-5 swing the sword arm too much for riding.
+const SKINS = { rider: ['Rider_PA_Sheet', 370, 320, [0, 1, 2]], khan: ['Khan_PA_Sheet', 370, 325, [0, 1, 2]] };
 let skin = SKINS.rider;
 const GOLD = '#e8c27a', RED = '#ff6b4a', BLUE = '#9fd3ff', PALE = '#cdb88f';
 
@@ -630,7 +631,7 @@ function drawRider() {
   const stride = eighth();
   const cell = game.hurt > 0 ? CELL.hurt[game.hurt > HURT - 0.15 ? 0 : 1]
     : game.slash > 0 ? CELL.slash[Math.min(CELL.slash.length - 1, Math.floor((sinceSlash / SLASH) * CELL.slash.length))]
-    : CELL.gallop[Math.floor(stride * CELL.gallop.length)];
+    : skin[3][Math.floor(stride * skin[3].length)];
   riderCell(cell, 1, knock, -5 * Math.sin(stride * 2 * Math.PI));
 }
 
